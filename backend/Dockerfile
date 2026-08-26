@@ -4,7 +4,7 @@
 # Build context: repository root.
 
 # ---- frontend ----
-FROM node:22-alpine AS frontend
+FROM node:26-alpine AS frontend
 WORKDIR /ui
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
@@ -12,7 +12,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # ---- rust: dependency planning & cached cook ----
-FROM rust:1.93-slim AS chef
+FROM rust:1.97-slim AS chef
 RUN cargo install cargo-chef --locked
 WORKDIR /app
 

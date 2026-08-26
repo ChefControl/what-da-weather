@@ -306,7 +306,7 @@ async fn evaluate(
 
     metrics::EVALUATIONS
         .with_label_values(&[
-            &event.activity,
+            event.activity.as_str(),
             if recommended {
                 "recommended"
             } else {

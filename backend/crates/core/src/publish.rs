@@ -77,8 +77,8 @@ impl Publisher {
 
         let confirm = channel
             .basic_publish(
-                "", // default exchange: routing key == queue name
-                &self.queue,
+                "".into(), // default exchange: routing key == queue name
+                self.queue.as_str().into(),
                 BasicPublishOptions::default(),
                 payload,
                 BasicProperties::default()
@@ -100,7 +100,7 @@ impl Publisher {
             .await?;
         channel
             .queue_declare(
-                &self.queue,
+                self.queue.as_str().into(),
                 QueueDeclareOptions {
                     durable: true,
                     ..Default::default()
