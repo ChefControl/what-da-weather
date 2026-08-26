@@ -1,0 +1,87 @@
+# Activity rules and scheduler configuration.
+#
+# Deserialized at startup into strict Rust types (serde, deny_unknown_fields):
+# a malformed file fails startup loudly instead of silently misbehaving.
+#
+# Each activity has:
+#   required  — hard gate. Any violation => "not recommended", LLM not consulted.
+#   preferred — soft preferences. Fed to the LLM as ranking input; also used for
+#               the rule-based fallback verdict when the LLM is unavailable
+#               (recommended when at least half are satisfied).
+#
+# Constraint params: temperature_c, wind_kmh, humidity_pct, precipitation_mm, cloud_cover_pct.
+# Each constraint needs `min`, `max`, or both.
+
+scheduler:
+  interval_minutes: 10
+  cities:
+    - "Tel Aviv"
+    - "Haifa"
+    - "Eilat"
+
+activities:
+  matkot:
+    name: "Matkot at the beach"
+    required:
+      - param: wind_kmh
+        max: 25
+        description: "Wind must stay below 25 km/h - matkot is impossible in strong wind"
+      - param: temperature_c
+        min: 18
+        description: "Too cold for the beach below 18 C"
+      - param: precipitation_mm
+        max: 0.5
+        description: "No meaningful rain"
+    preferred:
+      - param: temperature_c
+        min: 23
+        max: 32
+        description: "Pleasantly warm (23-32 C)"
+      - param: cloud_cover_pct
+        max: 40
+        description: "Mostly sunny"
+      - param: humidity_pct
+        max: 65
+        description: "Not muggy"
+
+  nature:
+    name: "Nature sightseeing"
+    required:
+      - param: wind_kmh
+        max: 50
+        description: "No storm-force wind"
+      - param: temperature_c
+        max: 38
+        description: "No extreme heat"
+      - param: precipitation_mm
+        max: 4
+        description: "No heavy rain"
+    preferred:
+      - param: temperature_c
+        min: 15
+        max: 28
+        description: "Mild temperatures (15-28 C)"
+      - param: cloud_cover_pct
+        max: 60
+        description: "Reasonably clear sky"
+      - param: wind_kmh
+        max: 20
+        description: "Calm air"
+
+  gaming:
+    name: "Gaming (indoors)"
+    required: []
+    preferred:
+      # The inverse preference: gaming ranks higher the worse it is outside.
+      - param: precipitation_mm
+        min: 0.2
+        description: "Rain outside makes staying in sweeter"
+      - param: wind_kmh
+        min: 30
+        description: "Windy outside"
+      - param: temperature_c
+        max: 12
+        description: "Cold outside"
+      - param: cloud_cover_pct
+        min: 80
+        description: "Gloomy sky"
