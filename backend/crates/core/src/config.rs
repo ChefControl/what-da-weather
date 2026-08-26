@@ -123,7 +123,11 @@ mod tests {
         let cfg = AppConfig::load(path).expect("shipped config must parse");
         assert!(cfg.activities.contains_key("matkot"));
         assert!(cfg.activities.contains_key("gaming"));
-        assert_eq!(cfg.scheduler.cities.len(), 3);
+        // The 12-city map list (post-task-enhancement.md); the tick interval
+        // was sized for exactly this worst case, so growing one means
+        // revisiting the other.
+        assert_eq!(cfg.scheduler.cities.len(), 12);
+        assert!(cfg.scheduler.interval_minutes >= 2);
     }
 
     #[test]

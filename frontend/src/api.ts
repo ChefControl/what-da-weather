@@ -81,6 +81,33 @@ export function evaluate(city: string, activity: string): Promise<EvaluateRespon
   })
 }
 
+/**
+ * One `/api/status` item: the latest evaluation per (city, activity), i.e. an
+ * EvaluationEvent as indexed. `city` is the geocoder's canonical spelling
+ * ("Teverya"), which can differ from the config spelling ("Tiberias").
+ */
+export interface StatusItem {
+  city: string
+  activity: string
+  activity_name: string
+  timestamp: string
+  latitude: number
+  longitude: number
+  recommended: boolean
+  source: VerdictSource
+  reasoning: string
+  weather?: Weather
+}
+
+export interface StatusResponse {
+  items: StatusItem[]
+  elasticsearch: boolean
+}
+
+export function getStatus(): Promise<StatusResponse> {
+  return request('/api/status')
+}
+
 export interface DebugResponse {
   activity: string
   activity_name: string

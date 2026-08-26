@@ -5,9 +5,14 @@ the beach, nature sightseeing, or gaming indoors) and the system checks the
 current weather, asks a **locally hosted LLM** whether it's a good idea, ships
 every evaluation through a durable **RabbitMQ → Logstash → Elasticsearch**
 pipeline, and pushes a browser notification the moment an activity *becomes*
-recommended. A scheduler re-evaluates every configured city every minute
-(configurable via `SCHEDULER_INTERVAL_MINUTES` or `config/activities.yaml`),
-and the whole stack is monitored with Prometheus + Grafana.
+recommended. A 🗺 map view shows the whole country at a glance: Voronoi regions
+around 12 measured cities, each colored by the latest verdict at its nearest
+city — no interpolation, no invented data (design in
+[post-task-enhancement.md](post-task-enhancement.md)). A scheduler re-evaluates
+every configured city every couple of minutes, spreading the calls across the
+tick window (configurable via `SCHEDULER_INTERVAL_MINUTES` or
+`config/activities.yaml`), and the whole stack is monitored with
+Prometheus + Grafana.
 
 Full design rationale — every architectural choice and its alternatives — lives
 in **[DESIGN.md](DESIGN.md)**. This README covers running and navigating the
@@ -157,7 +162,7 @@ dependencies rebuild only when manifests change.
 |---|---|
 | `POST /api/evaluate` | `{"city": "Tel Aviv", "activity": "matkot"}` → full evaluation event + whether it was durably published |
 | `POST /api/debug/evaluate` | `{"activity": ..., "weather": {...}}` — synthetic weather through the identical gate → LLM path; returns the verdict **and the exact prompt sent**. Nothing published or notified. Drives the UI's 🛠 Debug view (sliders per parameter) |
-| `GET /api/status` | Latest verdict per (city, activity) — Elasticsearch merged with in-memory state |
+| `GET /api/status` | Latest verdict per (city, activity) — Elasticsearch merged with in-memory state. Drives the UI's 🗺 Map view (Voronoi cells computed client-side from the returned lat/lons) |
 | `GET /api/activities` | Configured activities and scheduler cities |
 | `GET /api/events` | SSE stream of became-recommended notifications |
 | `GET /metrics` | Prometheus metrics |
