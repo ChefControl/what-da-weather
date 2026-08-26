@@ -1,24 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   evaluate,
   getActivities,
-  getStatus,
   type ActivitiesResponse,
   type EvaluateResponse,
   type Notice,
-  type StatusResponse,
 } from './api'
 import { EvaluateForm } from './components/EvaluateForm'
-import { StatusBoard } from './components/StatusBoard'
 import { Toasts } from './components/Toasts'
 import { VerdictCard } from './components/VerdictCard'
 import { browserNotify, useNotifications } from './useNotifications'
 
-const STATUS_REFRESH_MS = 60_000
-
 export default function App() {
   const [meta, setMeta] = useState<ActivitiesResponse>({ activities: [], cities: [] })
-  const [status, setStatus] = useState<StatusResponse>({ items: [], elasticsearch: true })
   const [result, setResult] = useState<EvaluateResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -27,37 +21,22 @@ export default function App() {
     'Notification' in window ? Notification.permission : 'unsupported',
   )
 
-  const refreshStatus = useCallback(() => {
-    getStatus()
-      .then(setStatus)
-      .catch(() => {
-        // keep showing the last known board on transient failures
-      })
-  }, [])
-
   useEffect(() => {
     getActivities()
       .then(setMeta)
       .catch((e: Error) => setError(`Failed to load activities: ${e.message}`))
-    refreshStatus()
-    const timer = setInterval(refreshStatus, STATUS_REFRESH_MS)
-    return () => clearInterval(timer)
-  }, [refreshStatus])
+  }, [])
 
   useNotifications((notice) => {
     setNotices((prev) => [...prev, notice])
     browserNotify(notice)
-    refreshStatus()
   })
 
   const handleEvaluate = (city: string, activity: string) => {
     setBusy(true)
     setError(null)
     evaluate(city, activity)
-      .then((resp) => {
-        setResult(resp)
-        refreshStatus()
-      })
+      .then(setResult)
       .catch((e: Error) => setError(e.message))
       .finally(() => setBusy(false))
   }
@@ -92,7 +71,6 @@ export default function App() {
           onSubmit={handleEvaluate}
         />
         {result && <VerdictCard event={result.event} published={result.published} />}
-        <StatusBoard items={status.items} elasticsearch={status.elasticsearch} />
       </main>
 
       <Toasts

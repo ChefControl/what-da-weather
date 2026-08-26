@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sourceLabel, timeAgo, verdictLabel, weatherSummary } from './format'
+import { sourceLabel, verdictLabel, weatherSummary } from './format'
 
 describe('verdictLabel', () => {
   it('labels both verdicts', () => {
@@ -42,21 +42,5 @@ describe('weatherSummary', () => {
       is_day: true,
     })
     expect(s).toBe('20.0°C · wind 5 km/h · humidity 40% · rain 0.0 mm · clouds 10%')
-  })
-})
-
-describe('timeAgo', () => {
-  const now = new Date('2026-08-26T12:00:00Z')
-  it('buckets by age', () => {
-    expect(timeAgo('2026-08-26T11:59:30Z', now)).toBe('just now')
-    expect(timeAgo('2026-08-26T11:49:00Z', now)).toBe('11 min ago')
-    expect(timeAgo('2026-08-26T09:00:00Z', now)).toBe('3 h ago')
-    expect(timeAgo('2026-08-24T09:00:00Z', now)).toBe('2 d ago')
-  })
-  it('handles invalid input', () => {
-    expect(timeAgo('not-a-date', now)).toBe('unknown')
-  })
-  it('clamps future timestamps', () => {
-    expect(timeAgo('2026-08-26T12:05:00Z', now)).toBe('just now')
   })
 })

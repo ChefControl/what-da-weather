@@ -11,11 +11,12 @@ interface Props {
 export function EvaluateForm({ activities, cities, busy, onSubmit }: Props) {
   const [city, setCity] = useState('')
   const [activity, setActivity] = useState('')
-  const selected = activity || activities[0]?.key || ''
+  const selectedCity = city || cities[0] || ''
+  const selectedActivity = activity || activities[0]?.key || ''
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
-    if (city.trim() && selected) onSubmit(city.trim(), selected)
+    if (selectedCity && selectedActivity) onSubmit(selectedCity, selectedActivity)
   }
 
   return (
@@ -23,23 +24,17 @@ export function EvaluateForm({ activities, cities, busy, onSubmit }: Props) {
       <h2>Check now</h2>
       <label>
         City
-        <input
-          type="text"
-          value={city}
-          list="city-suggestions"
-          placeholder="e.g. Tel Aviv"
-          onChange={(e) => setCity(e.target.value)}
-          required
-        />
-        <datalist id="city-suggestions">
+        <select value={selectedCity} onChange={(e) => setCity(e.target.value)}>
           {cities.map((c) => (
-            <option key={c} value={c} />
+            <option key={c} value={c}>
+              {c}
+            </option>
           ))}
-        </datalist>
+        </select>
       </label>
       <label>
         Activity
-        <select value={selected} onChange={(e) => setActivity(e.target.value)}>
+        <select value={selectedActivity} onChange={(e) => setActivity(e.target.value)}>
           {activities.map((a) => (
             <option key={a.key} value={a.key}>
               {a.name}
@@ -47,7 +42,7 @@ export function EvaluateForm({ activities, cities, busy, onSubmit }: Props) {
           ))}
         </select>
       </label>
-      <button type="submit" disabled={busy || !city.trim()}>
+      <button type="submit" disabled={busy || !selectedCity}>
         {busy ? 'Evaluating…' : 'Evaluate'}
       </button>
     </form>

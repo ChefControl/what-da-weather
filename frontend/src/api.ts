@@ -47,11 +47,6 @@ export interface ActivitiesResponse {
   cities: string[]
 }
 
-export interface StatusResponse {
-  items: EvaluationEvent[]
-  elasticsearch: boolean
-}
-
 export interface Notice {
   type: string
   city: string
@@ -78,10 +73,6 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 export function getActivities(): Promise<ActivitiesResponse> {
   return request('/api/activities')
-}
-
-export function getStatus(): Promise<StatusResponse> {
-  return request('/api/status')
 }
 
 export function evaluate(city: string, activity: string): Promise<EvaluateResponse> {
