@@ -58,7 +58,7 @@ pub async fn latest_from_es(http: &reqwest::Client, es_url: &str) -> anyhow::Res
 /// ES outages; ES covers state from before the last API restart.
 pub fn merge_latest(es_items: Vec<Value>, memory_items: Vec<Value>) -> Vec<Value> {
     let mut best: HashMap<(String, String), Value> = HashMap::new();
-    for item in es_items.into_iter().chain(memory_items.into_iter()) {
+    for item in es_items.into_iter().chain(memory_items) {
         let key = (
             item.get("city")
                 .and_then(Value::as_str)
