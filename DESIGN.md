@@ -36,39 +36,54 @@ Bonuses: full test coverage, dedicated LLM observability metrics, automatic fail
 
 ## 3. Architecture overview
 
+**Data path** — solid arrows are the pipeline; dotted arrows are the two external-call
+dependencies of an evaluation:
+
 ```mermaid
-flowchart TB
-    browser["Browser UI<br/>(React / TypeScript)"]
-    scheduler["scheduler<br/>(Rust, 10-min ticks)"]
+flowchart LR
+    UI["Browser UI"]
+    SCH["Scheduler"]
+    API["weather-api"]
+    MQ["RabbitMQ"]
+    LS["Logstash"]
+    ES[("Elasticsearch")]
+    GF["Grafana"]
+    OM["Open-Meteo"]
+    LLM["llama.cpp"]
 
-    subgraph api["weather-api (Rust / axum)"]
-        eval["Evaluation core<br/>rule gate → LLM → fallback"]
-        notifier["Notifier<br/>(in-memory edge detection)"]
+    UI -->|REST| API
+    SCH -->|HTTP| API
+    API -->|publish| MQ
+    MQ -->|consume| LS
+    LS -->|index| ES
+    ES -->|datasource| GF
+    API -.->|weather| OM
+    API -.->|verdict| LLM
+    API -->|SSE| UI
+```
+
+**Monitoring plane** — kept separate from the data path on purpose (see D6): Prometheus
+scrapes every component, Grafana reads both Prometheus (infra + LLM metrics) and
+Elasticsearch (business data):
+
+```mermaid
+flowchart LR
+    subgraph T["scrape targets (/metrics)"]
+        API["weather-api"]
+        SCH["scheduler"]
+        MQ["RabbitMQ"]
+        ES["Elasticsearch exporter"]
+        LLM["llama.cpp"]
     end
+    P["Prometheus"]
+    GF["Grafana<br/>dashboards + ops alerts"]
 
-    openmeteo["Open-Meteo<br/>(geocoding + weather, keyless)"]
-    llm["llama.cpp<br/>(llama-server, local LLM)"]
-    rabbit["RabbitMQ<br/>(durable queue)"]
-    logstash["Logstash<br/>(persistent queue, DLQ)"]
-    es[("Elasticsearch<br/>weather-recs-*")]
-    prom["Prometheus"]
-    grafana["Grafana<br/>dashboards + ops alerts"]
-
-    browser -- "REST (on-demand)" --> eval
-    scheduler -- "HTTP" --> eval
-    eval --> openmeteo
-    eval --> llm
-    eval -- "publish (persistent,<br/>publisher confirms)" --> rabbit
-    eval --> notifier
-    notifier -- "SSE → Notification API" --> browser
-    rabbit -- "consume" --> logstash
-    logstash -- "bulk index" --> es
-    es -- "datasource" --> grafana
-    prom -- "datasource" --> grafana
-    prom -. "scrape /metrics" .-> api
-    prom -. "scrape" .-> rabbit
-    prom -. "scrape" .-> es
-    prom -. "scrape" .-> llm
+    API --> P
+    SCH --> P
+    MQ --> P
+    ES --> P
+    LLM --> P
+    P --> GF
 ```
 
 Two flows share the `weather-api` evaluation core:
