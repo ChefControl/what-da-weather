@@ -137,13 +137,11 @@ sequenceDiagram
     alt required rules fail
         A->>A: verdict: not recommended (gate reasons)
     else rules pass
-        A->>L: prompt (weather + computed condition facts + guidance)
-        alt LLM verdict consistent with condition policy
+        A->>L: prompt (weather + activity guidance)
+        alt LLM responds with valid JSON
             L-->>A: verdict + reasoning (source: llm)
-        else LLM contradicts computed facts
-            A->>A: policy verdict (source: corrected)
         else LLM down / timeout / garbage
-            A->>A: conditions verdict (source: fallback)
+            A->>A: gate-only verdict (source: fallback)
         end
     end
     A->>Q: publish full event (persistent, publisher confirm)
