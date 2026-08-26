@@ -62,9 +62,7 @@ mod tests {
         WeatherSnapshot {
             temperature_c: 26.0,
             wind_kmh: 10.0,
-            humidity_pct: 50.0,
             precipitation_mm: 0.0,
-            cloud_cover_pct: 20.0,
             visibility_km: 20.0,
             weather_code: 1,
             is_day: true,

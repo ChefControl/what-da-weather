@@ -10,11 +10,11 @@
 #               make the activity impossible or unsafe. Any violation =>
 #               "not recommended", LLM not consulted.
 #   prompt    — free-text guidance sent to the LLM alongside the weather data.
-#               All nuance ("pleasantly warm", "better indoors when muggy")
-#               lives here; the LLM produces the verdict within the gate.
+#               All preference nuance lives here; the LLM produces the verdict
+#               within the gate.
 #
-# Constraint params: temperature_c, wind_kmh, humidity_pct, precipitation_mm,
-# cloud_cover_pct, visibility_km. Each constraint needs `min`, `max`, or both.
+# Constraint params: temperature_c, wind_kmh, precipitation_mm, visibility_km.
+# Each constraint needs `min`, `max`, or both.
 
 scheduler:
   interval_minutes: 10
@@ -43,10 +43,13 @@ activities:
         description: "No real rain"
     prompt: >-
       Matkot is a beach paddle-ball game played outdoors on the sand.
-      It is best on a warm, sunny, calm day: roughly 22-31 C, light wind
-      (the ball is very light), moderate humidity and no rain. High humidity
-      makes it sweaty and unpleasant; strong wind ruins the rallies.
-      Recommend it only when conditions make for an enjoyable beach session.
+      Apply this decision rule in order:
+      (1) If the temperature is below 22 C or above 31 C, recommended=false -
+      too cold or too hot for an enjoyable beach session.
+      (2) If the wind is above 12 km/h, recommended=false - the ball is very
+      light and will not fly straight.
+      (3) If there is any precipitation, recommended=false.
+      (4) Otherwise recommended=true - a great time for the beach.
 
   nature:
     name: "Nature sightseeing"
@@ -64,10 +67,14 @@ activities:
         description: "Sightseeing needs sight"
     prompt: >-
       Nature sightseeing means walking outdoor trails and viewpoints.
-      Ideal conditions: mild temperatures around 15-28 C, calm or light wind,
-      dry weather and clear air with long visibility for the views.
-      Heat above ~30 C, rain, fog or strong wind make it unpleasant.
-      Recommend it only when the outing would genuinely be enjoyable.
+      Apply this decision rule in order:
+      (1) If the temperature is below 15 C or above 30 C, recommended=false -
+      uncomfortable for hours of walking.
+      (2) If the wind is above 25 km/h, recommended=false.
+      (3) If the precipitation is above 0.5 mm, recommended=false.
+      (4) If the visibility is below 10 km, recommended=false - the views are
+      the whole point.
+      (5) Otherwise recommended=true - a fine day to be out on the trails.
 
   gaming:
     name: "Gaming (indoors)"
@@ -80,7 +87,7 @@ activities:
       (1) If it is nighttime, recommended=true - outdoor activities are done
       for the day.
       (2) If the weather outside is harsh - hotter than ~32 C, colder than
-      ~10 C, wind above ~30 km/h, rain, or humidity above ~70% (muggy) -
-      recommended=true: a great time to stay in and game.
+      ~10 C, wind above ~30 km/h, or rain - recommended=true: a great time
+      to stay in and game.
       (3) Otherwise the weather is pleasant for being outdoors:
       recommended=false, better to go outside.

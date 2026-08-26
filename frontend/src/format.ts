@@ -19,9 +19,7 @@ export function weatherSummary(w: Weather): string {
   const parts = [
     `${w.temperature_c.toFixed(1)}°C`,
     `wind ${w.wind_kmh.toFixed(0)} km/h`,
-    `humidity ${w.humidity_pct.toFixed(0)}%`,
     `rain ${w.precipitation_mm.toFixed(1)} mm`,
-    `clouds ${w.cloud_cover_pct.toFixed(0)}%`,
   ]
   // Events indexed before the visibility parameter existed lack the field.
   if (Number.isFinite(w.visibility_km)) {

@@ -18,18 +18,14 @@ interface SliderSpec {
 const SLIDERS: SliderSpec[] = [
   { key: 'temperature_c', label: 'Temperature', min: -10, max: 45, step: 0.5, unit: '°C' },
   { key: 'wind_kmh', label: 'Wind', min: 0, max: 80, step: 1, unit: 'km/h' },
-  { key: 'humidity_pct', label: 'Humidity', min: 0, max: 100, step: 1, unit: '%' },
   { key: 'precipitation_mm', label: 'Precipitation', min: 0, max: 20, step: 0.1, unit: 'mm' },
-  { key: 'cloud_cover_pct', label: 'Cloud cover', min: 0, max: 100, step: 1, unit: '%' },
   { key: 'visibility_km', label: 'Visibility', min: 0, max: 50, step: 0.5, unit: 'km' },
 ]
 
 const PLEASANT_DAY: Weather = {
   temperature_c: 26,
   wind_kmh: 8,
-  humidity_pct: 50,
   precipitation_mm: 0,
-  cloud_cover_pct: 20,
   visibility_km: 25,
   weather_code: 0,
   is_day: true,

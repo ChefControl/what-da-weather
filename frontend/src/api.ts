@@ -1,9 +1,7 @@
 export interface Weather {
   temperature_c: number
   wind_kmh: number
-  humidity_pct: number
   precipitation_mm: number
-  cloud_cover_pct: number
   visibility_km?: number
   weather_code: number
   is_day: boolean

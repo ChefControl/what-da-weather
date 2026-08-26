@@ -103,13 +103,13 @@ impl LlmClient {
     ) -> Result<LlmVerdict, LlmError> {
         let body = serde_json::json!({
             "model": "local",
-            "temperature": 0.1,
-            "max_tokens": 200,
+            "temperature": 0.0,
+            "max_tokens": 400,
             "response_format": {"type": "json_object"},
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a concise weather-activity advisor. The user names an activity, guidance describing when that activity is worth doing, and the current weather. Recommend the activity only if right now is a particularly good time for it according to the guidance. Respond with a single JSON object of the form {\"recommended\": true|false, \"reasoning\": \"one or two sentences\"} and nothing else. The reasoning must be consistent with the recommended value and name the deciding conditions."
+                    "content": "You are a precise weather-activity advisor. The user names an activity, guidance with numbered decision rules, and the current weather. Respond with a single JSON object and nothing else, of the form {\"checks\": [\"one short line per numbered rule: the actual comparison with real numbers and that rule's stated outcome, e.g. 'rule 2: wind 18 km/h vs limit 12 -> above, so recommended=false'\"], \"recommended\": true|false, \"reasoning\": \"one or two sentences\"}. Apply the rules in order exactly as written - each rule states its own effect on the verdict. recommended MUST equal the outcome of the first rule that applies (or the final otherwise rule), and reasoning must cite that deciding rule."
                 },
                 {"role": "user", "content": build_prompt(activity_name, guidance, weather)}
             ]
@@ -153,16 +153,14 @@ pub fn build_prompt(activity_name: &str, guidance: &str, weather: &WeatherSnapsh
         "Activity: {activity_name}\n\
          Guidance: {guidance}\n\
          Current weather at the location: temperature {:.1} C, wind {:.1} km/h, \
-         humidity {:.0}%, precipitation {:.1} mm, cloud cover {:.0}%, \
-         visibility {:.1} km, {}.\n\
-         Is right now a particularly good time for this activity? \
-         Answer with JSON only: {{\"recommended\": true or false, \"reasoning\": \"one or two \
-         sentences consistent with your verdict, naming the deciding conditions\"}}",
+         precipitation {:.1} mm, visibility {:.1} km, {}.\n\
+         Work through each numbered rule with the real numbers, then decide. \
+         Answer with JSON only: {{\"checks\": [\"one line per rule with the comparison\"], \
+         \"recommended\": true or false, \"reasoning\": \"one or two sentences citing the \
+         deciding check\"}}",
         weather.temperature_c,
         weather.wind_kmh,
-        weather.humidity_pct,
         weather.precipitation_mm,
-        weather.cloud_cover_pct,
         weather.visibility_km,
         if weather.is_day {
             "daytime"
@@ -249,9 +247,7 @@ mod tests {
         let weather = WeatherSnapshot {
             temperature_c: 26.0,
             wind_kmh: 10.0,
-            humidity_pct: 50.0,
             precipitation_mm: 0.0,
-            cloud_cover_pct: 20.0,
             visibility_km: 20.0,
             weather_code: 1,
             is_day: true,

@@ -11,9 +11,7 @@ use crate::retry::retry_if;
 pub enum WeatherParam {
     TemperatureC,
     WindKmh,
-    HumidityPct,
     PrecipitationMm,
-    CloudCoverPct,
     VisibilityKm,
 }
 
@@ -22,9 +20,7 @@ impl WeatherParam {
         match self {
             WeatherParam::TemperatureC => "temperature (C)",
             WeatherParam::WindKmh => "wind (km/h)",
-            WeatherParam::HumidityPct => "humidity (%)",
             WeatherParam::PrecipitationMm => "precipitation (mm)",
-            WeatherParam::CloudCoverPct => "cloud cover (%)",
             WeatherParam::VisibilityKm => "visibility (km)",
         }
     }
@@ -34,9 +30,7 @@ impl WeatherParam {
 pub struct WeatherSnapshot {
     pub temperature_c: f64,
     pub wind_kmh: f64,
-    pub humidity_pct: f64,
     pub precipitation_mm: f64,
-    pub cloud_cover_pct: f64,
     pub visibility_km: f64,
     pub weather_code: i64,
     pub is_day: bool,
@@ -47,9 +41,7 @@ impl WeatherSnapshot {
         match param {
             WeatherParam::TemperatureC => self.temperature_c,
             WeatherParam::WindKmh => self.wind_kmh,
-            WeatherParam::HumidityPct => self.humidity_pct,
             WeatherParam::PrecipitationMm => self.precipitation_mm,
-            WeatherParam::CloudCoverPct => self.cloud_cover_pct,
             WeatherParam::VisibilityKm => self.visibility_km,
         }
     }
@@ -174,11 +166,9 @@ impl OpenMeteo {
         #[derive(Deserialize)]
         struct CurrentBlock {
             temperature_2m: f64,
-            relative_humidity_2m: f64,
             precipitation: f64,
             weather_code: i64,
             wind_speed_10m: f64,
-            cloud_cover: f64,
             visibility: f64,
             is_day: i64,
         }
@@ -192,7 +182,7 @@ impl OpenMeteo {
                 ("longitude", longitude.to_string()),
                 (
                     "current",
-                    "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,cloud_cover,visibility,is_day"
+                    "temperature_2m,precipitation,weather_code,wind_speed_10m,visibility,is_day"
                         .to_string(),
                 ),
             ])
@@ -207,9 +197,7 @@ impl OpenMeteo {
         Ok(WeatherSnapshot {
             temperature_c: c.temperature_2m,
             wind_kmh: c.wind_speed_10m,
-            humidity_pct: c.relative_humidity_2m,
             precipitation_mm: c.precipitation,
-            cloud_cover_pct: c.cloud_cover,
             visibility_km: c.visibility / 1000.0, // Open-Meteo reports meters
             weather_code: c.weather_code,
             is_day: c.is_day == 1,
@@ -256,11 +244,9 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "current": {
                     "temperature_2m": 28.5,
-                    "relative_humidity_2m": 55.0,
                     "precipitation": 0.0,
                     "weather_code": 1,
                     "wind_speed_10m": 12.3,
-                    "cloud_cover": 20.0,
                     "visibility": 24140.0,
                     "is_day": 1
                 }
@@ -312,11 +298,9 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "current": {
                     "temperature_2m": 22.0,
-                    "relative_humidity_2m": 60.0,
                     "precipitation": 0.0,
                     "weather_code": 2,
                     "wind_speed_10m": 8.0,
-                    "cloud_cover": 45.0,
                     "visibility": 8000.0,
                     "is_day": 0
                 }
