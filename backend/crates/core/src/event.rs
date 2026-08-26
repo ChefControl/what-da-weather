@@ -13,6 +13,9 @@ pub enum VerdictSource {
     Llm,
     /// The LLM was unavailable/unparseable; rule-based fallback produced it.
     Fallback,
+    /// The LLM's verdict contradicted the deterministic condition policy and
+    /// was overridden by code (the consistency guard).
+    Corrected,
 }
 
 impl VerdictSource {
@@ -21,6 +24,7 @@ impl VerdictSource {
             VerdictSource::RulesGate => "rules-gate",
             VerdictSource::Llm => "llm",
             VerdictSource::Fallback => "fallback",
+            VerdictSource::Corrected => "corrected",
         }
     }
 }

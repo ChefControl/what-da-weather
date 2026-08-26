@@ -13,6 +13,7 @@ describe('sourceLabel', () => {
     expect(sourceLabel('llm')).toBe('LLM verdict')
     expect(sourceLabel('fallback')).toContain('fallback')
     expect(sourceLabel('rules-gate')).toContain('hard constraint')
+    expect(sourceLabel('corrected')).toContain('overridden')
   })
 })
 

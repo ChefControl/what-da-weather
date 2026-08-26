@@ -7,7 +7,7 @@ export interface Weather {
   is_day: boolean
 }
 
-export type VerdictSource = 'rules-gate' | 'llm' | 'fallback'
+export type VerdictSource = 'rules-gate' | 'llm' | 'fallback' | 'corrected'
 
 export interface EvaluationEvent {
   event_id: string

@@ -102,17 +102,23 @@ Two flows share the `weather-api` evaluation core:
    constraints that only block the impossible or unsafe (e.g. Matkot in storm-force wind, or
    any daylight-gated activity after sunset). If a required constraint fails, the verdict is
    "not recommended" with the failed constraints as the reason; the LLM is not consulted.
-3. **LLM ranking:** if the gate passes, llama.cpp receives the weather data plus the activity's
-   **per-activity guidance prompt** from config (free text describing when the activity is
-   worth doing — all preference nuance lives there, e.g. Gaming's inverse preference for bad
-   weather and nighttime) and returns a structured JSON verdict + human-readable reasoning.
-4. **Fallback:** if the LLM is unreachable/times out/returns garbage after bounded retries, the
-   degraded verdict is gate-only — "recommended: every hard constraint passes" — flagged
-   `source: "fallback"` (vs `source: "llm"`). Honest but coarse: preference nuance is the
-   LLM's job now, so an LLM outage costs ranking quality, never availability.
-5. The full event (city, weather snapshot, activity, gate results, verdict, source, latency)
+3. **LLM judgment on computed facts:** if the gate passes, code evaluates the activity's soft
+   **conditions** (structured thresholds in config) and injects the results into the LLM prompt
+   as pre-computed "holds / does not hold" lists, alongside the activity's guidance prompt.
+   The model never does arithmetic — probing showed a 3B model cannot reliably execute numeric
+   comparison chains — it aggregates facts and writes the verdict + reasoning.
+4. **Consistency guard:** each activity declares how its conditions aggregate
+   (`decision: all` for outdoor activities, `any` for inverse preferences like Gaming), so the
+   conditions imply a deterministic expected verdict. An LLM verdict that contradicts it is
+   overridden by code, flagged `source: "corrected"`, and counted
+   (`llm_errors_total{kind="inconsistent"}`) — correctness is by construction, and LLM quality
+   is measured instead of trusted.
+5. **Fallback:** if the LLM is unreachable/times out/returns garbage after bounded retries, the
+   deterministic conditions verdict is served directly, flagged `source: "fallback"`. The
+   system degrades, never breaks.
+6. The full event (city, weather snapshot, activity, gate results, verdict, source, latency)
    is published to RabbitMQ and returned to the caller.
-6. The in-process **notifier** compares the verdict against its in-memory last-state map per
+7. The in-process **notifier** compares the verdict against its in-memory last-state map per
    (city, activity) and, on a **not-recommended → recommended transition only**, broadcasts an
    SSE event; open browser tabs surface it via the Notification API.
 
@@ -148,15 +154,20 @@ sequenceDiagram
 
 Three predefined activities (strict — no free-text activities in v1):
 
-| Activity | Required (loose hard gate) | LLM guidance prompt (all nuance) |
-|---|---|---|
-| Matkot at the beach | sun up at the location, 15–38 °C, wind ≤ 20 km/h, visibility ≥ 1 km, rain ≤ 2 mm | warm sunny calm beach day, ~22–31 °C, light wind, not muggy |
-| Nature sightseeing | sun up at the location, 8–38 °C, wind ≤ 50 km/h, visibility ≥ 3 km | mild 15–28 °C, dry, clear air and long views; heat/rain/fog/wind unpleasant |
-| Gaming (indoors) | none (always physically possible) | inverse preference: recommend when it's hot/cold/windy/rainy/muggy outside or nighttime; lean against on lovely outdoor days |
+| Activity | Required (loose hard gate) | Conditions (code-computed) | Policy |
+|---|---|---|---|
+| Matkot at the beach | sun up, 15–38 °C, wind ≤ 20, visibility ≥ 1 km, rain ≤ 2 mm | 22–31 °C, wind ≤ 12, completely dry | all |
+| Nature sightseeing | sun up, 8–38 °C, wind ≤ 50, visibility ≥ 3 km | 15–30 °C, wind ≤ 25, ≤ 0.5 mm rain, visibility ≥ 10 km | all |
+| Gaming (indoors) | none (always physically possible) | nighttime, or very hot / cold / windy / rainy outside (inverse) | any |
 
-An earlier iteration used machine-checkable **preferred** constraint lists for the ranking; it
-was replaced by the free-text prompt because qualitative judgment ("muggy night → stay in") is
-exactly what the LLM is for, and numeric preference lists kept fighting it.
+**How this split was reached (debug-page findings):** an iteration that moved all thresholds
+into free-text prompts failed reproducibly — the 3B model recites numeric rules and then botches
+the comparisons (`18 > 12` missed, `6 < 10` missed), and no prompt shape fixed its
+recommend-on-nice-weather prior for the inverse activity. The final division of labor:
+**code computes every comparison and the policy-implied verdict; the LLM judges the annotated
+facts and narrates; a consistency guard corrects (and meters) the model when it contradicts
+the computed facts.** Weather signals were also slimmed to five high-signal inputs
+(temperature, wind, precipitation, visibility, day/night) — humidity and cloud cover dropped.
 
 Rules live in a mounted **YAML file** (`config/activities.yaml`), deserialized at startup into
 strict Rust types with `serde` — config-driven **and** compiler-validated: a malformed file
