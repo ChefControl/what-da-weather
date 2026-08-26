@@ -4,7 +4,7 @@ export interface Weather {
   humidity_pct: number
   precipitation_mm: number
   cloud_cover_pct: number
-  visibility_km: number
+  visibility_km?: number
   weather_code: number
   is_day: boolean
 }

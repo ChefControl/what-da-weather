@@ -16,14 +16,18 @@ export function sourceLabel(source: VerdictSource): string {
 }
 
 export function weatherSummary(w: Weather): string {
-  return [
+  const parts = [
     `${w.temperature_c.toFixed(1)}°C`,
     `wind ${w.wind_kmh.toFixed(0)} km/h`,
     `humidity ${w.humidity_pct.toFixed(0)}%`,
     `rain ${w.precipitation_mm.toFixed(1)} mm`,
     `clouds ${w.cloud_cover_pct.toFixed(0)}%`,
-    `visibility ${w.visibility_km.toFixed(0)} km`,
-  ].join(' · ')
+  ]
+  // Events indexed before the visibility parameter existed lack the field.
+  if (Number.isFinite(w.visibility_km)) {
+    parts.push(`visibility ${(w.visibility_km as number).toFixed(0)} km`)
+  }
+  return parts.join(' · ')
 }
 
 export function timeAgo(iso: string, now: Date = new Date()): string {

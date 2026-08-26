@@ -30,6 +30,19 @@ describe('weatherSummary', () => {
     })
     expect(s).toBe('28.5°C · wind 12 km/h · humidity 55% · rain 0.0 mm · clouds 20% · visibility 24 km')
   })
+
+  it('tolerates events indexed before the visibility field existed', () => {
+    const s = weatherSummary({
+      temperature_c: 20,
+      wind_kmh: 5,
+      humidity_pct: 40,
+      precipitation_mm: 0,
+      cloud_cover_pct: 10,
+      weather_code: 1,
+      is_day: true,
+    })
+    expect(s).toBe('20.0°C · wind 5 km/h · humidity 40% · rain 0.0 mm · clouds 10%')
+  })
 })
 
 describe('timeAgo', () => {
