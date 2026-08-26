@@ -1,4 +1,4 @@
-use crate::config::Constraint;
+use crate::config::{Activity, Constraint};
 use crate::weather::WeatherSnapshot;
 
 #[derive(Debug, Clone)]
@@ -33,13 +33,20 @@ fn describe_violation(c: &Constraint, w: &WeatherSnapshot) -> String {
 }
 
 /// The hard gate (DESIGN.md §3): any violated required constraint blocks the
-/// activity outright, and the LLM is not consulted.
-pub fn evaluate_gate(required: &[Constraint], w: &WeatherSnapshot) -> GateResult {
-    let failures: Vec<String> = required
-        .iter()
-        .filter(|c| !constraint_satisfied(c, w))
-        .map(|c| describe_violation(c, w))
-        .collect();
+/// activity outright, and the LLM is not consulted. `require_daylight` gates
+/// on Open-Meteo's location-aware `is_day` (sun position at the coordinates).
+pub fn evaluate_gate(activity: &Activity, w: &WeatherSnapshot) -> GateResult {
+    let mut failures: Vec<String> = Vec::new();
+    if activity.require_daylight && !w.is_day {
+        failures.push("Daylight required - the sun is down at this location".to_string());
+    }
+    failures.extend(
+        activity
+            .required
+            .iter()
+            .filter(|c| !constraint_satisfied(c, w))
+            .map(|c| describe_violation(c, w)),
+    );
     GateResult {
         passed: failures.is_empty(),
         failures,
@@ -111,13 +118,25 @@ mod tests {
         }
     }
 
+    fn activity(required: Vec<Constraint>, require_daylight: bool) -> Activity {
+        Activity {
+            name: "Test".to_string(),
+            require_daylight,
+            required,
+            preferred: vec![],
+        }
+    }
+
     #[test]
     fn gate_passes_when_all_required_hold() {
-        let required = vec![
-            constraint(WeatherParam::WindKmh, None, Some(25.0)),
-            constraint(WeatherParam::TemperatureC, Some(18.0), None),
-        ];
-        let gate = evaluate_gate(&required, &snapshot());
+        let a = activity(
+            vec![
+                constraint(WeatherParam::WindKmh, None, Some(25.0)),
+                constraint(WeatherParam::TemperatureC, Some(18.0), None),
+            ],
+            false,
+        );
+        let gate = evaluate_gate(&a, &snapshot());
         assert!(gate.passed);
         assert!(gate.failures.is_empty());
     }
@@ -127,15 +146,46 @@ mod tests {
         let mut w = snapshot();
         w.wind_kmh = 40.0;
         w.temperature_c = 10.0;
-        let required = vec![
-            constraint(WeatherParam::WindKmh, None, Some(25.0)),
-            constraint(WeatherParam::TemperatureC, Some(18.0), None),
-            constraint(WeatherParam::PrecipitationMm, None, Some(0.5)),
-        ];
-        let gate = evaluate_gate(&required, &w);
+        let a = activity(
+            vec![
+                constraint(WeatherParam::WindKmh, None, Some(25.0)),
+                constraint(WeatherParam::TemperatureC, Some(18.0), None),
+                constraint(WeatherParam::PrecipitationMm, None, Some(0.5)),
+            ],
+            false,
+        );
+        let gate = evaluate_gate(&a, &w);
         assert!(!gate.passed);
         assert_eq!(gate.failures.len(), 2);
         assert!(gate.failures[0].contains("wind"));
+    }
+
+    #[test]
+    fn daylight_gate_blocks_at_night() {
+        let mut w = snapshot();
+        w.is_day = false;
+        let a = activity(
+            vec![constraint(WeatherParam::WindKmh, None, Some(25.0))],
+            true,
+        );
+        let gate = evaluate_gate(&a, &w);
+        assert!(!gate.passed);
+        assert_eq!(gate.failures.len(), 1);
+        assert!(gate.failures[0].contains("Daylight required"));
+    }
+
+    #[test]
+    fn daylight_gate_passes_during_the_day() {
+        let a = activity(vec![], true);
+        assert!(evaluate_gate(&a, &snapshot()).passed);
+    }
+
+    #[test]
+    fn night_is_fine_without_daylight_requirement() {
+        let mut w = snapshot();
+        w.is_day = false;
+        let a = activity(vec![], false);
+        assert!(evaluate_gate(&a, &w).passed);
     }
 
     #[test]

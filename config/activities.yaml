@@ -4,6 +4,8 @@
 # a malformed file fails startup loudly instead of silently misbehaving.
 #
 # Each activity has:
+#   require_daylight — optional hard gate: only possible while the sun is up
+#                      at the evaluated location (Open-Meteo is_day).
 #   required  — hard gate. Any violation => "not recommended", LLM not consulted.
 #   preferred — soft preferences. Fed to the LLM as ranking input; also used for
 #               the rule-based fallback verdict when the LLM is unavailable
@@ -22,6 +24,9 @@ scheduler:
 activities:
   matkot:
     name: "Matkot at the beach"
+    # Hard gate on local daylight: Open-Meteo's is_day is computed from sun
+    # position at the city's coordinates, so this is timezone-correct for free.
+    require_daylight: true
     required:
       - param: wind_kmh
         max: 25

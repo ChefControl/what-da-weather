@@ -173,7 +173,7 @@ async fn evaluate(
             other => ApiError::Provider(other.to_string()),
         })?;
 
-    let gate = rules::evaluate_gate(&activity.required, &weather);
+    let gate = rules::evaluate_gate(activity, &weather);
     let (recommended, source, reasoning, llm_latency_ms) = if !gate.passed {
         (
             false,
@@ -288,10 +288,15 @@ async fn activities(State(state): State<SharedState>) -> Json<serde_json::Value>
         .activities
         .iter()
         .map(|(key, a)| {
+            let mut required: Vec<String> =
+                a.required.iter().map(|c| c.description.clone()).collect();
+            if a.require_daylight {
+                required.insert(0, "Only while the sun is up at the location".to_string());
+            }
             serde_json::json!({
                 "key": key,
                 "name": a.name,
-                "required": a.required.iter().map(|c| c.description.clone()).collect::<Vec<_>>(),
+                "required": required,
                 "preferred": a.preferred.iter().map(|c| c.description.clone()).collect::<Vec<_>>(),
             })
         })

@@ -25,6 +25,10 @@ pub struct SchedulerConfig {
 #[serde(deny_unknown_fields)]
 pub struct Activity {
     pub name: String,
+    /// Hard gate on daylight: the activity is only possible while the sun is
+    /// up at the evaluated location (Open-Meteo's `is_day`).
+    #[serde(default)]
+    pub require_daylight: bool,
     #[serde(default)]
     pub required: Vec<Constraint>,
     #[serde(default)]

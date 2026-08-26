@@ -148,13 +148,17 @@ Three predefined activities (strict — no free-text activities in v1):
 
 | Activity | Required (hard gate) | Preferred (LLM ranking input) |
 |---|---|---|
-| Matkot at the beach | wind below threshold, temperature above floor, no heavy rain | warm, sunny, low humidity |
+| Matkot at the beach | **sun up at the location**, wind below threshold, temperature above floor, no heavy rain | warm, sunny, low humidity |
 | Nature sightseeing | no dangerous conditions (storm, extreme heat) | mild temps, clear sky |
 | Gaming (indoors) | none (always possible) | *bad* weather outside (storm, wind, extreme heat) — the inverse preference |
 
 Rules live in a mounted **YAML file** (`config/activities.yaml`), deserialized at startup into
 strict Rust types with `serde` — config-driven **and** compiler-validated: a malformed file
 fails startup loudly. The scheduler's city list lives in the same file.
+
+Activities are **time-aware at the location**: an optional `require_daylight` hard gate uses
+Open-Meteo's `is_day` (computed from sun position at the evaluated coordinates), so
+"only when the sun is up" is timezone- and season-correct with no clock logic of our own.
 
 ## 5. Decision ledger (choices, alternatives, and why)
 
