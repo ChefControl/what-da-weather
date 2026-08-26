@@ -34,6 +34,11 @@ pub struct Activity {
     pub require_daylight: bool,
     #[serde(default)]
     pub required: Vec<Constraint>,
+    /// Soft checks evaluated BY CODE; results are injected into the LLM prompt
+    /// as pre-computed holds / does-not-hold facts, so the model never does
+    /// arithmetic. The LLM's verdict on those facts is final.
+    #[serde(default)]
+    pub conditions: Vec<Constraint>,
 }
 
 /// A numeric bound on one weather parameter. `min`/`max` are inclusive; at
@@ -84,7 +89,7 @@ impl AppConfig {
                 !activity.prompt.trim().is_empty(),
                 "activity '{key}': prompt must not be empty"
             );
-            for c in activity.required.iter() {
+            for c in activity.required.iter().chain(activity.conditions.iter()) {
                 anyhow::ensure!(
                     c.min.is_some() || c.max.is_some(),
                     "activity '{key}': constraint on {:?} has neither min nor max",

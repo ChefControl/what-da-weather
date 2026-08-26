@@ -84,6 +84,7 @@ mod tests {
             prompt: "test".to_string(),
             require_daylight,
             required,
+            conditions: vec![],
         }
     }
 

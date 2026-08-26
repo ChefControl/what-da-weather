@@ -102,10 +102,14 @@ Two flows share the `weather-api` evaluation core:
    constraints that only block the impossible or unsafe (e.g. Matkot in storm-force wind, or
    any daylight-gated activity after sunset). If a required constraint fails, the verdict is
    "not recommended" with the failed constraints as the reason; the LLM is not consulted.
-3. **LLM ranking:** if the gate passes, llama.cpp receives the weather data plus the activity's
-   **per-activity guidance prompt** from config (free text describing when the activity is
-   worth doing — all preference nuance lives there, e.g. Gaming's inverse preference for bad
-   weather and nighttime) and returns a structured JSON verdict + human-readable reasoning.
+3. **LLM ranking:** if the gate passes, code evaluates the activity's soft **conditions**
+   (structured constraints from config) and hands llama.cpp the weather data, the activity's
+   guidance prompt, and the pre-computed results as grouped "conditions that HOLD / do NOT
+   hold" lists plus a computed "N of M conditions hold" summary. The comparisons are done in
+   code because a small model cannot reliably execute numeric comparison chains (measured on
+   the debug page); the model's job is judgment over stated facts, and **its verdict is
+   final** — structured JSON with `reasoning` FIRST and `recommended` last, so the boolean is
+   generated after (and conditioned on) the model's own analysis instead of before it.
 4. **Fallback:** if the LLM is unreachable/times out/returns garbage after bounded retries, the
    degraded verdict is gate-only — "recommended: every hard constraint passes" — flagged
    `source: "fallback"` (vs `source: "llm"`). Honest but coarse: preference nuance is the
@@ -131,7 +135,8 @@ sequenceDiagram
     alt required rules fail
         A->>A: verdict: not recommended (gate reasons)
     else rules pass
-        A->>L: prompt (weather + activity guidance)
+        A->>A: evaluate soft conditions (code does the math)
+        A->>L: prompt (weather + guidance + computed HOLD / NOT-hold lists)
         alt LLM responds with valid JSON
             L-->>A: verdict + reasoning (source: llm)
         else LLM down / timeout / garbage
@@ -148,15 +153,24 @@ sequenceDiagram
 
 Three predefined activities (strict — no free-text activities in v1):
 
-| Activity | Required (loose hard gate) | LLM guidance prompt (all nuance) |
+| Activity | Required (loose hard gate) | Soft conditions (computed by code, judged by the LLM) |
 |---|---|---|
-| Matkot at the beach | sun up at the location, 15–38 °C, wind ≤ 20 km/h, visibility ≥ 1 km, rain ≤ 2 mm | warm sunny calm beach day, ~22–31 °C, light wind, not muggy |
-| Nature sightseeing | sun up at the location, 8–38 °C, wind ≤ 50 km/h, visibility ≥ 3 km | mild 15–28 °C, dry, clear air and long views; heat/rain/fog/wind unpleasant |
-| Gaming (indoors) | none (always physically possible) | inverse preference: recommend when it's hot/cold/windy/rainy/muggy outside or nighttime; lean against on lovely outdoor days |
+| Matkot at the beach | sun up at the location, 15–38 °C, wind ≤ 20 km/h, visibility ≥ 1 km, rain ≤ 2 mm | 22–31 °C, wind ≤ 12 km/h, completely dry — recommend only when all hold |
+| Nature sightseeing | sun up at the location, 8–38 °C, wind ≤ 50 km/h, visibility ≥ 3 km | 15–30 °C, wind ≤ 25 km/h, essentially dry, visibility ≥ 10 km — recommend only when all hold |
+| Gaming (indoors) | none (always physically possible) | inverse: nighttime, or hot ≥ 32 °C / cold ≤ 10 °C / wind ≥ 30 km/h / rain argue for staying in — recommend when any holds |
 
-An earlier iteration used machine-checkable **preferred** constraint lists for the ranking; it
-was replaced by the free-text prompt because qualitative judgment ("muggy night → stay in") is
-exactly what the LLM is for, and numeric preference lists kept fighting it.
+Two earlier iterations shaped this: machine-checkable **preferred** lists fought the LLM's
+qualitative judgment, and free-text numbered rules asked a 3B model to do arithmetic it
+demonstrably cannot (probed via the debug page: comparisons like "18 > 12" were missed). The
+resolution is a split: **code computes each condition; the LLM reads the computed facts,
+applies the activity's guidance prompt, and decides.** The verdict is the LLM's own — there is
+no code-side override. Two prompt-alignment findings (probed deterministically at temperature
+0.0 on the debug page) make that reliable: (1) `reasoning` must precede `recommended` in the
+output JSON — verdict-first lets the model's nice-weather prior fix the boolean before any
+analysis happens; (2) the inverse activity's guidance must key off the computed count ("0
+conditions hold"), not example keywords — keyword examples collide with the same phrases
+appearing in the do-NOT-hold list. With both, the 9-case probe matrix is 9/9 correct with
+every verdict `source: llm`.
 
 Rules live in a mounted **YAML file** (`config/activities.yaml`), deserialized at startup into
 strict Rust types with `serde` — config-driven **and** compiler-validated: a malformed file

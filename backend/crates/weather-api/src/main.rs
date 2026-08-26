@@ -171,7 +171,12 @@ async fn debug_evaluate(
         .ok_or_else(|| ApiError::UnknownActivity(req.activity.clone()))?;
 
     let gate = rules::evaluate_gate(activity, &req.weather);
-    let prompt = wdw_core::llm::build_prompt(&activity.name, &activity.prompt, &req.weather);
+    let prompt = wdw_core::llm::build_prompt(
+        &activity.name,
+        &activity.prompt,
+        &activity.conditions,
+        &req.weather,
+    );
     let (recommended, source, reasoning, llm_latency_ms) = if !gate.passed {
         (
             false,
@@ -182,7 +187,12 @@ async fn debug_evaluate(
     } else {
         match state
             .llm
-            .verdict(&activity.name, &activity.prompt, &req.weather)
+            .verdict(
+                &activity.name,
+                &activity.prompt,
+                &activity.conditions,
+                &req.weather,
+            )
             .await
         {
             Ok((verdict, latency_ms)) => (
@@ -248,7 +258,12 @@ async fn evaluate(
     } else {
         match state
             .llm
-            .verdict(&activity.name, &activity.prompt, &weather)
+            .verdict(
+                &activity.name,
+                &activity.prompt,
+                &activity.conditions,
+                &weather,
+            )
             .await
         {
             Ok((verdict, latency_ms)) => (

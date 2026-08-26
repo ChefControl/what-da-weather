@@ -2,7 +2,9 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
+use crate::config::Constraint;
 use crate::metrics;
+use crate::rules::constraint_satisfied;
 use crate::weather::WeatherSnapshot;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -69,6 +71,7 @@ impl LlmClient {
         &self,
         activity_name: &str,
         guidance: &str,
+        conditions: &[Constraint],
         weather: &WeatherSnapshot,
     ) -> Result<(LlmVerdict, u64), LlmError> {
         let started = Instant::now();
@@ -77,7 +80,10 @@ impl LlmClient {
             if attempt > 0 {
                 tokio::time::sleep(Duration::from_millis(500)).await;
             }
-            match self.request_once(activity_name, guidance, weather).await {
+            match self
+                .request_once(activity_name, guidance, conditions, weather)
+                .await
+            {
                 Ok(verdict) => {
                     let elapsed = started.elapsed();
                     metrics::LLM_REQUESTS.with_label_values(&["ok"]).inc();
@@ -99,19 +105,20 @@ impl LlmClient {
         &self,
         activity_name: &str,
         guidance: &str,
+        conditions: &[Constraint],
         weather: &WeatherSnapshot,
     ) -> Result<LlmVerdict, LlmError> {
         let body = serde_json::json!({
             "model": "local",
             "temperature": 0.0,
-            "max_tokens": 400,
+            "max_tokens": 250,
             "response_format": {"type": "json_object"},
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a precise weather-activity advisor. The user names an activity, guidance with numbered decision rules, and the current weather. Respond with a single JSON object and nothing else, of the form {\"checks\": [\"one short line per numbered rule: the actual comparison with real numbers and that rule's stated outcome, e.g. 'rule 2: wind 18 km/h vs limit 12 -> above, so recommended=false'\"], \"recommended\": true|false, \"reasoning\": \"one or two sentences\"}. Apply the rules in order exactly as written - each rule states its own effect on the verdict. recommended MUST equal the outcome of the first rule that applies (or the final otherwise rule), and reasoning must cite that deciding rule."
+                    "content": "You are a concise weather-activity advisor. The user names an activity, guidance on how to decide, the current weather, and condition checks ALREADY COMPUTED by the system. Trust the computed results exactly - never recompute or second-guess them. Apply the guidance to those results and decide. Respond with a single JSON object of the form {\"reasoning\": \"one or two sentences citing the deciding conditions, ending with exactly 'Conclusion: recommended.' or 'Conclusion: not recommended.'\", \"recommended\": true|false} and nothing else - reasoning FIRST, then recommended. recommended is true when the reasoning ends 'Conclusion: recommended.' and false when it ends 'Conclusion: not recommended.'"
                 },
-                {"role": "user", "content": build_prompt(activity_name, guidance, weather)}
+                {"role": "user", "content": build_prompt(activity_name, guidance, conditions, weather)}
             ]
         });
 
@@ -148,16 +155,17 @@ impl LlmClient {
     }
 }
 
-pub fn build_prompt(activity_name: &str, guidance: &str, weather: &WeatherSnapshot) -> String {
-    format!(
+pub fn build_prompt(
+    activity_name: &str,
+    guidance: &str,
+    conditions: &[Constraint],
+    weather: &WeatherSnapshot,
+) -> String {
+    let mut prompt = format!(
         "Activity: {activity_name}\n\
          Guidance: {guidance}\n\
          Current weather at the location: temperature {:.1} C, wind {:.1} km/h, \
-         precipitation {:.1} mm, visibility {:.1} km, {}.\n\
-         Work through each numbered rule with the real numbers, then decide. \
-         Answer with JSON only: {{\"checks\": [\"one line per rule with the comparison\"], \
-         \"recommended\": true or false, \"reasoning\": \"one or two sentences citing the \
-         deciding check\"}}",
+         precipitation {:.1} mm, visibility {:.1} km, {}.\n",
         weather.temperature_c,
         weather.wind_kmh,
         weather.precipitation_mm,
@@ -167,7 +175,43 @@ pub fn build_prompt(activity_name: &str, guidance: &str, weather: &WeatherSnapsh
         } else {
             "nighttime"
         }
-    )
+    );
+    if !conditions.is_empty() {
+        // The whole point (DESIGN.md D7): comparisons are computed here, in
+        // code, so the model aggregates facts instead of doing arithmetic.
+        // Grouped lists (rather than per-line MET/NOT MET annotations) keep a
+        // small model from misparsing negations; "(none)" is unambiguous.
+        let (met, unmet): (Vec<&Constraint>, Vec<&Constraint>) = conditions
+            .iter()
+            .partition(|c| constraint_satisfied(c, weather));
+        let list = |v: &[&Constraint]| -> String {
+            if v.is_empty() {
+                "(none)".to_string()
+            } else {
+                v.iter()
+                    .map(|c| c.description.as_str())
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            }
+        };
+        prompt.push_str(&format!(
+            "Condition checks, already computed by the system (trust them):\n\
+             Conditions that HOLD right now: {}\n\
+             Conditions that do NOT hold: {}\n\
+             Computed summary: {} of {} conditions hold right now.\n",
+            list(&met),
+            list(&unmet),
+            met.len(),
+            conditions.len()
+        ));
+    }
+    prompt.push_str(
+        "Apply the guidance to the computed checks and decide. \
+         Answer with JSON only, reasoning first: {\"reasoning\": \"one or two sentences citing \
+         the deciding conditions, ending with 'Conclusion: recommended.' or 'Conclusion: not \
+         recommended.'\", \"recommended\": true or false}",
+    );
+    prompt
 }
 
 /// Defensive parse of LLM output: accepts a bare JSON object, or one embedded
@@ -243,7 +287,53 @@ mod tests {
     }
 
     #[test]
-    fn prompt_includes_guidance_and_weather() {
+    fn prompt_annotates_computed_checks() {
+        use crate::weather::WeatherParam;
+        let weather = WeatherSnapshot {
+            temperature_c: 26.0,
+            wind_kmh: 18.0,
+            precipitation_mm: 0.0,
+            visibility_km: 20.0,
+            weather_code: 1,
+            is_day: true,
+        };
+        let conditions = vec![
+            Constraint {
+                param: WeatherParam::TemperatureC,
+                min: Some(22.0),
+                max: Some(31.0),
+                description: "Warm beach temperature".to_string(),
+            },
+            Constraint {
+                param: WeatherParam::WindKmh,
+                min: None,
+                max: Some(12.0),
+                description: "Calm enough for the ball".to_string(),
+            },
+            Constraint {
+                param: WeatherParam::IsDay,
+                min: None,
+                max: Some(0.0),
+                description: "It is nighttime".to_string(),
+            },
+        ];
+        let prompt = build_prompt(
+            "Matkot",
+            "Recommend only if nothing is in the do-NOT-hold list.",
+            &conditions,
+            &weather,
+        );
+        assert!(prompt.contains("Guidance: Recommend only if nothing is in the do-NOT-hold list."));
+        assert!(prompt.contains("Conditions that HOLD right now: Warm beach temperature"));
+        // 18 > 12 and is_day -> 1.0, both computed in code:
+        assert!(prompt
+            .contains("Conditions that do NOT hold: Calm enough for the ball; It is nighttime"));
+        assert!(prompt.contains("temperature 26.0 C"));
+        assert!(prompt.contains("JSON only"));
+    }
+
+    #[test]
+    fn prompt_without_conditions_has_no_checks_block() {
         let weather = WeatherSnapshot {
             temperature_c: 26.0,
             wind_kmh: 10.0,
@@ -252,11 +342,9 @@ mod tests {
             weather_code: 1,
             is_day: true,
         };
-        let prompt = build_prompt("Matkot", "Best on warm calm days.", &weather);
-        assert!(prompt.contains("Matkot"));
+        let prompt = build_prompt("Matkot", "Best on warm calm days.", &[], &weather);
         assert!(prompt.contains("Guidance: Best on warm calm days."));
-        assert!(prompt.contains("temperature 26.0 C"));
-        assert!(prompt.contains("daytime"));
+        assert!(!prompt.contains("Conditions that HOLD"));
         assert!(prompt.contains("JSON only"));
     }
 }
