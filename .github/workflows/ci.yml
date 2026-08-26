@@ -95,3 +95,11 @@ jobs:
           # critical path: only manifest changes invalidate the cook layer.
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      # A tag alone is easy to miss; publish it as a real GitHub release with
+      # auto-generated notes. Runs after the image push so a release always
+      # corresponds to a shipped image.
+      - name: Create GitHub release for the new tag (main only)
+        if: steps.semver.outputs.new_tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create '${{ steps.semver.outputs.new_tag }}' --verify-tag --generate-notes
