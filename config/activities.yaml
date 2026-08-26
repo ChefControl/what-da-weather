@@ -47,7 +47,7 @@ activities:
       - param: temperature_c
         min: 22
         max: 31
-        description: "Warm beach temperature (22-31 C)"
+        description: "Warm enough for swimwear (22-31 C) - outside this the beach session is unpleasant, not marginal"
       - param: wind_kmh
         max: 12
         description: "Calm enough for the very light ball (wind at most 12 km/h)"
@@ -56,9 +56,10 @@ activities:
         description: "Completely dry"
     prompt: >-
       Matkot is a beach paddle-ball game played outdoors on the sand.
-      Recommend it (recommended=true) ONLY if the "do NOT hold" list is (none).
-      If any condition does not hold, recommended=false and the reasoning must
-      cite it.
+      It should normally be recommended (recommended=true) only when the
+      "do NOT hold" list is (none). A condition that does not hold should
+      normally mean recommended=false - cite it in the reasoning. Use your
+      judgment on marginal cases, naming the trade-off you are accepting.
 
   nature:
     name: "Nature sightseeing"
@@ -90,9 +91,10 @@ activities:
         description: "Long views (at least 10 km visibility)"
     prompt: >-
       Nature sightseeing means walking outdoor trails and viewpoints.
-      Recommend it (recommended=true) ONLY if the "do NOT hold" list is (none).
-      If any condition does not hold, recommended=false and the reasoning must
-      cite it.
+      It should normally be recommended (recommended=true) only when the
+      "do NOT hold" list is (none). A condition that does not hold should
+      normally mean recommended=false - cite it in the reasoning. Use your
+      judgment on marginal cases, naming the trade-off you are accepting.
 
   gaming:
     name: "Gaming (indoors)"
@@ -117,8 +119,9 @@ activities:
         description: "Raining outside"
     prompt: >-
       Gaming is an INDOOR activity: weather or darkness never block it. Here
-      "recommended" means "the weather says stay in and game". Decide ONLY
-      from the computed summary number: if 0 conditions hold, recommended=false
-      - the weather is too pleasant to waste indoors, go outside instead. If
-      1 or more conditions hold, recommended=true - cite the holding condition
-      as the reason to stay in and game.
+      "recommended" means "the weather says stay in and game". Decide from
+      the computed summary number: if 0 conditions hold, it should normally
+      be recommended=false - the weather is too pleasant to waste indoors, go
+      outside instead. If 1 or more conditions hold, it should normally be
+      recommended=true - cite the holding condition as the reason to stay in
+      and game. Use your judgment on marginal cases, naming the trade-off.
