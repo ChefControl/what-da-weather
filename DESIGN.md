@@ -234,11 +234,13 @@ committed as code.
 - The model is an env var (`LLM_MODEL_URL`); the GGUF is downloaded on first start and cached
   in a named volume.
 - The LLM is asked for strict JSON; parsing is defensive, with the D6 fallback on failure.
-- **Resolved during implementation:** live testing confirmed **Qwen2.5-1.5B-Instruct Q4_K_M**
-  as the default — valid JSON verdicts on every attempt, ~3.3 s cold / ~1.4 s warm per verdict
-  on CPU, comfortably inside the memory budget. Known quirk of the size class: reasoning on
-  inverse preferences (Gaming) can be agreeable-but-mushy; acceptable since hard constraints
-  are enforced by the rule gate, not the LLM.
+- **Resolved during implementation (two rounds):** Qwen2.5-1.5B-Instruct passed live JSON/latency
+  testing, but its *reasoning coherence* proved inadequate — on inverse-preference activities
+  (Gaming) it produced reasoning that contradicted its own verdict. Upgraded to
+  **Qwen2.5-3B-Instruct Q4_K_M** (2.1 GB, the shortlist's quality ceiling): reasoning now
+  names the deciding conditions and stays consistent with the verdict, at ~1.3–1.6 s warm
+  CPU latency (≈2.5 GiB runtime — inside budget). The cached model file is keyed by name
+  (`LLM_MODEL_FILE`), so swapping `LLM_MODEL_URL` can never silently reuse a stale download.
 
 ### D8. Frontend: React + TypeScript + Vite, served by axum
 `vite build` emits static files; a multi-stage Dockerfile (node stage → rust stage → minimal
