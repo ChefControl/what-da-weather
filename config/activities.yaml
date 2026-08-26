@@ -6,10 +6,12 @@
 # Each activity has:
 #   require_daylight — optional hard gate: only possible while the sun is up
 #                      at the evaluated location (Open-Meteo is_day).
-#   required  — hard gate. Any violation => "not recommended", LLM not consulted.
-#   preferred — soft preferences. Fed to the LLM as ranking input; also used for
-#               the rule-based fallback verdict when the LLM is unavailable
-#               (recommended when at least half are satisfied).
+#   required  — hard gate, deliberately LOOSE: it blocks only conditions that
+#               make the activity impossible or unsafe. Any violation =>
+#               "not recommended", LLM not consulted.
+#   prompt    — free-text guidance sent to the LLM alongside the weather data.
+#               All nuance ("pleasantly warm", "better indoors when muggy")
+#               lives here; the LLM produces the verdict within the gate.
 #
 # Constraint params: temperature_c, wind_kmh, humidity_pct, precipitation_mm,
 # cloud_cover_pct, visibility_km. Each constraint needs `min`, `max`, or both.
@@ -24,70 +26,61 @@ scheduler:
 activities:
   matkot:
     name: "Matkot at the beach"
-    # Comfortable temp, almost no wind, visibility not extremely low, sun up.
     require_daylight: true
     required:
       - param: temperature_c
-        min: 18
-        max: 34
-        description: "Comfortable beach temperature (18-34 C)"
+        min: 15
+        max: 38
+        description: "Not brutally cold or dangerously hot (15-38 C)"
       - param: wind_kmh
-        max: 12
-        description: "Almost no wind - the ball flies straight"
+        max: 20
+        description: "Wind below 20 km/h - beyond that the ball won't fly straight"
       - param: visibility_km
-        min: 2
+        min: 1
         description: "Visibility must not be extremely low"
       - param: precipitation_mm
-        max: 0.5
-        description: "No meaningful rain"
-    preferred:
-      - param: temperature_c
-        min: 23
-        max: 30
-        description: "Pleasantly warm (23-30 C)"
-      - param: cloud_cover_pct
-        max: 40
-        description: "Mostly sunny"
-      - param: humidity_pct
-        max: 65
-        description: "Not muggy"
+        max: 2
+        description: "No real rain"
+    prompt: >-
+      Matkot is a beach paddle-ball game played outdoors on the sand.
+      It is best on a warm, sunny, calm day: roughly 22-31 C, light wind
+      (the ball is very light), moderate humidity and no rain. High humidity
+      makes it sweaty and unpleasant; strong wind ruins the rallies.
+      Recommend it only when conditions make for an enjoyable beach session.
 
   nature:
     name: "Nature sightseeing"
-    # Comfortable temp, no extreme wind, good visibility, sun up.
     require_daylight: true
     required:
       - param: temperature_c
-        min: 12
-        max: 34
-        description: "Comfortable temperature (12-34 C)"
+        min: 8
+        max: 38
+        description: "Not freezing or dangerously hot (8-38 C)"
       - param: wind_kmh
-        max: 40
-        description: "No extreme wind"
+        max: 50
+        description: "No storm-force wind"
       - param: visibility_km
-        min: 5
-        description: "Good visibility - sightseeing needs sight"
-    preferred:
-      - param: temperature_c
-        min: 16
-        max: 28
-        description: "Pleasant hiking temperature (16-28 C)"
-      - param: visibility_km
-        min: 15
-        description: "Crisp long-distance views"
-      - param: wind_kmh
-        max: 20
-        description: "Calm air"
+        min: 3
+        description: "Sightseeing needs sight"
+    prompt: >-
+      Nature sightseeing means walking outdoor trails and viewpoints.
+      Ideal conditions: mild temperatures around 15-28 C, calm or light wind,
+      dry weather and clear air with long visibility for the views.
+      Heat above ~30 C, rain, fog or strong wind make it unpleasant.
+      Recommend it only when the outing would genuinely be enjoyable.
 
   gaming:
     name: "Gaming (indoors)"
-    # The inverse preference: harsh weather outside makes gaming rank higher.
-    # Visibility and sun position deliberately do not matter.
+    # Indoors: no hard gate. The prompt encodes the inverse preference.
     required: []
-    preferred:
-      - param: temperature_c
-        min: 30
-        description: "Hot outside - better in the AC"
-      - param: wind_kmh
-        min: 25
-        description: "Windy outside"
+    prompt: >-
+      Gaming happens indoors, so the weather can never prevent it - the only
+      question is whether staying in beats going out. Apply this decision rule
+      in order:
+      (1) If it is nighttime, recommended=true - outdoor activities are done
+      for the day.
+      (2) If the weather outside is harsh - hotter than ~32 C, colder than
+      ~10 C, wind above ~30 km/h, rain, or humidity above ~70% (muggy) -
+      recommended=true: a great time to stay in and game.
+      (3) Otherwise the weather is pleasant for being outdoors:
+      recommended=false, better to go outside.

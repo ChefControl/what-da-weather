@@ -39,7 +39,7 @@ export interface ActivityMeta {
   key: string
   name: string
   required: string[]
-  preferred: string[]
+  prompt: string
 }
 
 export interface ActivitiesResponse {

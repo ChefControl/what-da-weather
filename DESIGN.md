@@ -98,16 +98,18 @@ Two flows share the `weather-api` evaluation core:
 ### Evaluation core (per request)
 
 1. Geocode city + fetch current weather from Open-Meteo (retry with backoff).
-2. **Rule gate:** each activity defines **required** parameters (hard constraints — e.g. Matkot
-   is impossible above a wind threshold or below a temperature floor). If a required constraint
-   fails, the verdict is "not recommended" with the failed constraints as the reason; the LLM is
-   not consulted.
-3. **LLM ranking:** if required constraints pass, llama.cpp is prompted with the weather data
-   and the activity's **preferred** parameters (soft preferences — e.g. Gaming is preferred in
-   bad weather) and returns a structured JSON verdict + human-readable reasoning.
-4. **Fallback:** if the LLM is unreachable/times out/returns garbage after bounded retries, a
-   rule-based verdict from the preferred parameters is produced and flagged `source: "fallback"`
-   (vs `source: "llm"`). The system degrades, never breaks.
+2. **Rule gate:** each activity defines **required** parameters — deliberately loose hard
+   constraints that only block the impossible or unsafe (e.g. Matkot in storm-force wind, or
+   any daylight-gated activity after sunset). If a required constraint fails, the verdict is
+   "not recommended" with the failed constraints as the reason; the LLM is not consulted.
+3. **LLM ranking:** if the gate passes, llama.cpp receives the weather data plus the activity's
+   **per-activity guidance prompt** from config (free text describing when the activity is
+   worth doing — all preference nuance lives there, e.g. Gaming's inverse preference for bad
+   weather and nighttime) and returns a structured JSON verdict + human-readable reasoning.
+4. **Fallback:** if the LLM is unreachable/times out/returns garbage after bounded retries, the
+   degraded verdict is gate-only — "recommended: every hard constraint passes" — flagged
+   `source: "fallback"` (vs `source: "llm"`). Honest but coarse: preference nuance is the
+   LLM's job now, so an LLM outage costs ranking quality, never availability.
 5. The full event (city, weather snapshot, activity, gate results, verdict, source, latency)
    is published to RabbitMQ and returned to the caller.
 6. The in-process **notifier** compares the verdict against its in-memory last-state map per
@@ -129,11 +131,11 @@ sequenceDiagram
     alt required rules fail
         A->>A: verdict: not recommended (gate reasons)
     else rules pass
-        A->>L: prompt (weather + preferred params)
+        A->>L: prompt (weather + activity guidance)
         alt LLM responds with valid JSON
             L-->>A: verdict + reasoning (source: llm)
         else LLM down / timeout / garbage
-            A->>A: rule-based verdict (source: fallback)
+            A->>A: gate-only verdict (source: fallback)
         end
     end
     A->>Q: publish full event (persistent, publisher confirm)
@@ -146,11 +148,15 @@ sequenceDiagram
 
 Three predefined activities (strict — no free-text activities in v1):
 
-| Activity | Required (hard gate) | Preferred (LLM ranking input) |
+| Activity | Required (loose hard gate) | LLM guidance prompt (all nuance) |
 |---|---|---|
-| Matkot at the beach | sun up at the location, comfortable temperature, almost no wind, visibility not extremely low, no rain | warm, sunny, low humidity |
-| Nature sightseeing | sun up at the location, comfortable temperature, no extreme wind, good visibility | pleasant temps, crisp long views, calm air |
-| Gaming (indoors) | none (always possible; visibility and sun position deliberately irrelevant) | *harsh* weather outside (hot, windy) — the inverse preference |
+| Matkot at the beach | sun up at the location, 15–38 °C, wind ≤ 20 km/h, visibility ≥ 1 km, rain ≤ 2 mm | warm sunny calm beach day, ~22–31 °C, light wind, not muggy |
+| Nature sightseeing | sun up at the location, 8–38 °C, wind ≤ 50 km/h, visibility ≥ 3 km | mild 15–28 °C, dry, clear air and long views; heat/rain/fog/wind unpleasant |
+| Gaming (indoors) | none (always physically possible) | inverse preference: recommend when it's hot/cold/windy/rainy/muggy outside or nighttime; lean against on lovely outdoor days |
+
+An earlier iteration used machine-checkable **preferred** constraint lists for the ranking; it
+was replaced by the free-text prompt because qualitative judgment ("muggy night → stay in") is
+exactly what the LLM is for, and numeric preference lists kept fighting it.
 
 Rules live in a mounted **YAML file** (`config/activities.yaml`), deserialized at startup into
 strict Rust types with `serde` — config-driven **and** compiler-validated: a malformed file

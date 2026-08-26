@@ -25,14 +25,15 @@ pub struct SchedulerConfig {
 #[serde(deny_unknown_fields)]
 pub struct Activity {
     pub name: String,
+    /// Free-text guidance sent to the LLM alongside the weather data. All
+    /// preference nuance lives here; `required` only guards the impossible.
+    pub prompt: String,
     /// Hard gate on daylight: the activity is only possible while the sun is
     /// up at the evaluated location (Open-Meteo's `is_day`).
     #[serde(default)]
     pub require_daylight: bool,
     #[serde(default)]
     pub required: Vec<Constraint>,
-    #[serde(default)]
-    pub preferred: Vec<Constraint>,
 }
 
 /// A numeric bound on one weather parameter. `min`/`max` are inclusive; at
@@ -79,7 +80,11 @@ impl AppConfig {
             "scheduler.interval_minutes must be >= 1"
         );
         for (key, activity) in &self.activities {
-            for c in activity.required.iter().chain(activity.preferred.iter()) {
+            anyhow::ensure!(
+                !activity.prompt.trim().is_empty(),
+                "activity '{key}': prompt must not be empty"
+            );
+            for c in activity.required.iter() {
                 anyhow::ensure!(
                     c.min.is_some() || c.max.is_some(),
                     "activity '{key}': constraint on {:?} has neither min nor max",
@@ -123,6 +128,7 @@ scheduler: { interval_minutes: 10, cities: ["X"] }
 activities:
   a:
     name: "A"
+    prompt: "test"
     required:
       - param: wind_kmh
         description: "no bounds"
@@ -138,6 +144,7 @@ scheduler: { interval_minutes: 10, cities: ["X"] }
 activities:
   a:
     name: "A"
+    prompt: "test"
     required:
       - param: moon_phase
         max: 1
@@ -147,12 +154,26 @@ activities:
     }
 
     #[test]
+    fn rejects_empty_prompt() {
+        let yaml = r#"
+scheduler: { interval_minutes: 10, cities: ["X"] }
+activities:
+  a:
+    name: "A"
+    prompt: "  "
+"#;
+        let cfg: AppConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
     fn rejects_unknown_field() {
         let yaml = r#"
 scheduler: { interval_minutes: 10, cities: ["X"] }
 activities:
   a:
     name: "A"
+    prompt: "test"
     requird: []
 "#;
         assert!(serde_yaml::from_str::<AppConfig>(yaml).is_err());

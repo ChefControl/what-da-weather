@@ -2,9 +2,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::Constraint;
 use crate::metrics;
-use crate::rules::constraint_satisfied;
 use crate::weather::WeatherSnapshot;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -70,7 +68,7 @@ impl LlmClient {
     pub async fn verdict(
         &self,
         activity_name: &str,
-        preferred: &[Constraint],
+        guidance: &str,
         weather: &WeatherSnapshot,
     ) -> Result<(LlmVerdict, u64), LlmError> {
         let started = Instant::now();
@@ -79,7 +77,7 @@ impl LlmClient {
             if attempt > 0 {
                 tokio::time::sleep(Duration::from_millis(500)).await;
             }
-            match self.request_once(activity_name, preferred, weather).await {
+            match self.request_once(activity_name, guidance, weather).await {
                 Ok(verdict) => {
                     let elapsed = started.elapsed();
                     metrics::LLM_REQUESTS.with_label_values(&["ok"]).inc();
@@ -100,7 +98,7 @@ impl LlmClient {
     async fn request_once(
         &self,
         activity_name: &str,
-        preferred: &[Constraint],
+        guidance: &str,
         weather: &WeatherSnapshot,
     ) -> Result<LlmVerdict, LlmError> {
         let body = serde_json::json!({
@@ -111,9 +109,9 @@ impl LlmClient {
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a concise weather-activity advisor. The user names an activity, the current weather, and the conditions under which that activity is MOST enjoyable. Recommend the activity only if it is a particularly good time for it. Respond with a single JSON object of the form {\"recommended\": true|false, \"reasoning\": \"one or two sentences\"} and nothing else. The reasoning must be consistent with the recommended value and name the deciding conditions."
+                    "content": "You are a concise weather-activity advisor. The user names an activity, guidance describing when that activity is worth doing, and the current weather. Recommend the activity only if right now is a particularly good time for it according to the guidance. Respond with a single JSON object of the form {\"recommended\": true|false, \"reasoning\": \"one or two sentences\"} and nothing else. The reasoning must be consistent with the recommended value and name the deciding conditions."
                 },
-                {"role": "user", "content": build_prompt(activity_name, preferred, weather)}
+                {"role": "user", "content": build_prompt(activity_name, guidance, weather)}
             ]
         });
 
@@ -150,15 +148,16 @@ impl LlmClient {
     }
 }
 
-pub fn build_prompt(
-    activity_name: &str,
-    preferred: &[Constraint],
-    weather: &WeatherSnapshot,
-) -> String {
-    let mut prompt = format!(
+pub fn build_prompt(activity_name: &str, guidance: &str, weather: &WeatherSnapshot) -> String {
+    format!(
         "Activity: {activity_name}\n\
-         Current weather: temperature {:.1} C, wind {:.1} km/h, humidity {:.0}%, \
-         precipitation {:.1} mm, cloud cover {:.0}%, visibility {:.1} km, {}.\n",
+         Guidance: {guidance}\n\
+         Current weather at the location: temperature {:.1} C, wind {:.1} km/h, \
+         humidity {:.0}%, precipitation {:.1} mm, cloud cover {:.0}%, \
+         visibility {:.1} km, {}.\n\
+         Is right now a particularly good time for this activity? \
+         Answer with JSON only: {{\"recommended\": true or false, \"reasoning\": \"one or two \
+         sentences consistent with your verdict, naming the deciding conditions\"}}",
         weather.temperature_c,
         weather.wind_kmh,
         weather.humidity_pct,
@@ -170,33 +169,7 @@ pub fn build_prompt(
         } else {
             "nighttime"
         }
-    );
-    if !preferred.is_empty() {
-        let met_count = preferred
-            .iter()
-            .filter(|c| constraint_satisfied(c, weather))
-            .count();
-        prompt.push_str("This activity is most enjoyable when:\n");
-        for c in preferred {
-            let met = if constraint_satisfied(c, weather) {
-                "currently MET"
-            } else {
-                "currently NOT met"
-            };
-            prompt.push_str(&format!("- {} ({met})\n", c.description));
-        }
-        prompt.push_str(&format!(
-            "{met_count} of {} of these conditions hold right now. \
-             If most do not hold, this is probably not the moment for it.\n",
-            preferred.len()
-        ));
-    }
-    prompt.push_str(
-        "Is right now a particularly good time for this activity? \
-         Answer with JSON only: {\"recommended\": true or false, \"reasoning\": \"one or two sentences \
-         consistent with your verdict, naming the deciding conditions\"}",
-    );
-    prompt
+    )
 }
 
 /// Defensive parse of LLM output: accepts a bare JSON object, or one embedded
@@ -272,8 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn prompt_mentions_met_status() {
-        use crate::weather::WeatherParam;
+    fn prompt_includes_guidance_and_weather() {
         let weather = WeatherSnapshot {
             temperature_c: 26.0,
             wind_kmh: 10.0,
@@ -284,15 +256,11 @@ mod tests {
             weather_code: 1,
             is_day: true,
         };
-        let preferred = vec![Constraint {
-            param: WeatherParam::TemperatureC,
-            min: Some(23.0),
-            max: Some(32.0),
-            description: "Pleasantly warm".to_string(),
-        }];
-        let prompt = build_prompt("Matkot", &preferred, &weather);
-        assert!(prompt.contains("Pleasantly warm (currently MET)"));
-        assert!(prompt.contains("1 of 1 of these conditions hold"));
+        let prompt = build_prompt("Matkot", "Best on warm calm days.", &weather);
         assert!(prompt.contains("Matkot"));
+        assert!(prompt.contains("Guidance: Best on warm calm days."));
+        assert!(prompt.contains("temperature 26.0 C"));
+        assert!(prompt.contains("daytime"));
+        assert!(prompt.contains("JSON only"));
     }
 }

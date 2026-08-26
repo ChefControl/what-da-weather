@@ -184,7 +184,7 @@ async fn evaluate(
     } else {
         match state
             .llm
-            .verdict(&activity.name, &activity.preferred, &weather)
+            .verdict(&activity.name, &activity.prompt, &weather)
             .await
         {
             Ok((verdict, latency_ms)) => (
@@ -194,11 +194,18 @@ async fn evaluate(
                 Some(latency_ms),
             ),
             Err(e) => {
-                tracing::warn!(error = %e, "llm unavailable, using rule-based fallback");
+                // Preference nuance lives in the LLM now; without it the honest
+                // degraded answer is "possible": every hard constraint passed.
+                tracing::warn!(error = %e, "llm unavailable, degrading to gate-only verdict");
                 metrics::LLM_FALLBACKS.inc();
-                let (recommended, reasoning) =
-                    rules::fallback_verdict(&activity.preferred, &weather);
-                (recommended, VerdictSource::Fallback, reasoning, None)
+                (
+                    true,
+                    VerdictSource::Fallback,
+                    "All hard constraints pass; the LLM advisor is unavailable, so no \
+                     preference ranking was applied."
+                        .to_string(),
+                    None,
+                )
             }
         }
     };
@@ -297,7 +304,7 @@ async fn activities(State(state): State<SharedState>) -> Json<serde_json::Value>
                 "key": key,
                 "name": a.name,
                 "required": required,
-                "preferred": a.preferred.iter().map(|c| c.description.clone()).collect::<Vec<_>>(),
+                "prompt": a.prompt,
             })
         })
         .collect();
