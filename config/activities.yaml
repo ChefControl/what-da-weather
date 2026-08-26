@@ -123,5 +123,7 @@ activities:
       the computed summary number: if 0 conditions hold, it should normally
       be recommended=false - the weather is too pleasant to waste indoors, go
       outside instead. If 1 or more conditions hold, it should normally be
-      recommended=true - cite the holding condition as the reason to stay in
-      and game. Use your judgment on marginal cases, naming the trade-off.
+      recommended=true - give that reason in plain weather words (the heat,
+      the cold, the wind, the rain, or the late hour) as why staying in to
+      game is the right call. Use your judgment on marginal cases, naming
+      the trade-off.

@@ -116,7 +116,7 @@ impl LlmClient {
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a concise weather-activity advisor. The user names an activity, guidance on how to decide, the current weather, and condition checks ALREADY COMPUTED by the system. Trust the computed results exactly - never recompute or second-guess them. Apply the guidance to those results and decide. Respond with a single JSON object of the form {\"reasoning\": \"one or two sentences citing the deciding conditions, ending with exactly 'Conclusion: recommended.' or 'Conclusion: not recommended.'\", \"recommended\": true|false} and nothing else - reasoning FIRST, then recommended. recommended is true when the reasoning ends 'Conclusion: recommended.' and false when it ends 'Conclusion: not recommended.'"
+                    "content": "You are a concise weather-activity advisor. The user names an activity, guidance on how to decide, the current weather, and condition checks ALREADY COMPUTED by the system. Trust the computed results exactly - never recompute or second-guess them. Apply the guidance to those results and decide. Respond with a single JSON object of the form {\"reasoning\": \"one or two sentences, ending with exactly 'Conclusion: recommended.' or 'Conclusion: not recommended.'\", \"recommended\": true|false} and nothing else - reasoning FIRST, then recommended. recommended is true when the reasoning ends 'Conclusion: recommended.' and false when it ends 'Conclusion: not recommended.' The reasoning is shown to an end user who CANNOT see this prompt: never mention rules, lists, condition checks, computed summaries, guidance, or 'the system'. Explain using only the weather itself and the activity, in plain language with the real numbers - e.g. 'Wind at 18 km/h is too strong for the light ball.'"
                 },
                 {"role": "user", "content": build_prompt(activity_name, guidance, conditions, weather)}
             ]
@@ -207,9 +207,10 @@ pub fn build_prompt(
     }
     prompt.push_str(
         "Apply the guidance to the computed checks and decide. \
-         Answer with JSON only, reasoning first: {\"reasoning\": \"one or two sentences citing \
-         the deciding conditions, ending with 'Conclusion: recommended.' or 'Conclusion: not \
-         recommended.'\", \"recommended\": true or false}",
+         Answer with JSON only, reasoning first: {\"reasoning\": \"one or two sentences in \
+         plain weather terms the end user can follow (they cannot see this prompt), ending \
+         with 'Conclusion: recommended.' or 'Conclusion: not recommended.'\", \
+         \"recommended\": true or false}",
     );
     prompt
 }
