@@ -124,7 +124,6 @@ through the monitoring stack (DESIGN.md D6).
 ```
 ├── DESIGN.md                # the "why" behind every choice
 ├── docker-compose.yml       # the whole system
-├── docker-compose-dev.yaml  # override: build the app image from the local tree
 ├── config/activities.yaml   # activity rules + scheduler cities (validated at startup)
 ├── backend/                 # Rust workspace: core lib + weather-api + scheduler
 ├── frontend/                # React + TypeScript (Vite), served by weather-api
@@ -142,6 +141,10 @@ cd backend && cargo fmt && cargo clippy --workspace --all-targets && cargo test
 # Frontend (Node 22+): dev server proxies /api to localhost:8080
 cd frontend && npm install && npm run dev
 npm test && npm run build
+
+# Run the full stack from the local tree instead of the released GHCR image
+docker build -t what-da-weather:local -f backend/Dockerfile .
+APP_IMAGE=what-da-weather:local docker compose up -d
 ```
 
 CI runs the same checks on every push/PR; merges to `main` additionally push
