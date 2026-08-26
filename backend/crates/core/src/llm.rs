@@ -105,13 +105,13 @@ impl LlmClient {
     ) -> Result<LlmVerdict, LlmError> {
         let body = serde_json::json!({
             "model": "local",
-            "temperature": 0.2,
+            "temperature": 0.1,
             "max_tokens": 200,
             "response_format": {"type": "json_object"},
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a concise weather-activity advisor. Respond with a single JSON object of the form {\"recommended\": true|false, \"reasoning\": \"one or two sentences\"} and nothing else."
+                    "content": "You are a concise weather-activity advisor. The user names an activity, the current weather, and the conditions under which that activity is MOST enjoyable. Recommend the activity only if it is a particularly good time for it. Respond with a single JSON object of the form {\"recommended\": true|false, \"reasoning\": \"one or two sentences\"} and nothing else. The reasoning must be consistent with the recommended value and name the deciding conditions."
                 },
                 {"role": "user", "content": build_prompt(activity_name, preferred, weather)}
             ]
@@ -172,19 +172,29 @@ pub fn build_prompt(
         }
     );
     if !preferred.is_empty() {
-        prompt.push_str("Preferred conditions for this activity:\n");
+        let met_count = preferred
+            .iter()
+            .filter(|c| constraint_satisfied(c, weather))
+            .count();
+        prompt.push_str("This activity is most enjoyable when:\n");
         for c in preferred {
             let met = if constraint_satisfied(c, weather) {
-                "currently met"
+                "currently MET"
             } else {
                 "currently NOT met"
             };
             prompt.push_str(&format!("- {} ({met})\n", c.description));
         }
+        prompt.push_str(&format!(
+            "{met_count} of {} of these conditions hold right now. \
+             If most do not hold, this is probably not the moment for it.\n",
+            preferred.len()
+        ));
     }
     prompt.push_str(
-        "Given this, should I do this activity right now? \
-         Answer with JSON only: {\"recommended\": true or false, \"reasoning\": \"one or two sentences\"}",
+        "Is right now a particularly good time for this activity? \
+         Answer with JSON only: {\"recommended\": true or false, \"reasoning\": \"one or two sentences \
+         consistent with your verdict, naming the deciding conditions\"}",
     );
     prompt
 }
@@ -281,7 +291,8 @@ mod tests {
             description: "Pleasantly warm".to_string(),
         }];
         let prompt = build_prompt("Matkot", &preferred, &weather);
-        assert!(prompt.contains("Pleasantly warm (currently met)"));
+        assert!(prompt.contains("Pleasantly warm (currently MET)"));
+        assert!(prompt.contains("1 of 1 of these conditions hold"));
         assert!(prompt.contains("Matkot"));
     }
 }
