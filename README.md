@@ -181,7 +181,7 @@ Event streaming like Kafka shines in one-to-many publishing (one source of truth
 
 What RabbitMQ gives us for free: per-message ack, retry, TTL and dead-lettering as native one-liners (in Kafka these are hand-rolled patterns, and a poison record blocks its whole partition). Plus a much lower memory footprint — Kafka costs ~1GB+ out of a 7.65GB Docker VM.
 
-When to revisit: if independent consumer types multiply, one-log/many-cursors wins — at that point we migrate to Kafka. Half-measures like RabbitMQ Streams just delay the inevitable while adding an unfamiliar operational surface; if the workload has become streaming-shaped, take the industry-standard tool for it.
+When to revisit: if independent consumer types multiply, one-log/many-cursors wins — at that point we migrate to Kafka.
 
 **Q3. Why Rust?**
 
