@@ -170,11 +170,18 @@ output JSON — verdict-first lets the model's nice-weather prior fix the boolea
 analysis happens; (2) the inverse activity's guidance must key off the computed count ("0
 conditions hold"), not example keywords — keyword examples collide with the same phrases
 appearing in the do-NOT-hold list. With both, the 9-case probe matrix is 9/9 correct on
-Qwen2.5-3B with every verdict `source: llm`. The adopted Ministral-3-3B passes the same
-matrix with one accepted deviation: on a marginal miss (nature at 6 km visibility) it weighs
-the full picture and overrides the strict "any failing condition → no" guidance, citing the
-trade-off explicitly. That is deliberate scope for the LLM: code guarantees the facts and the
-hard gate; the model owns the judgment call.
+Qwen2.5-3B with every verdict `source: llm`. On the adopted Ministral-3-3B, the guidance is
+phrased as a norm ("should normally"), with explicit room for judgment on marginal cases; the
+distinction between core and cosmetic conditions lives in the condition descriptions
+themselves (e.g. matkot's "outside this the beach session is unpleasant, not marginal"),
+because the description is the text the model weighs. A third finding: the `reasoning` is
+user-facing, and the end user never sees the prompt — so the system prompt forbids citing
+rules, lists, or computed summaries and requires plain weather terms with real numbers.
+Beyond readability, this made verdicts *more* faithful: with no "3 of 4 conditions hold"
+crutch to cite as fake system endorsement, the model judges marginal cases on the weather
+itself (probed and human-reviewed: all 9 cases sound, verdicts and prose). Deliberate scope
+for the LLM remains: code guarantees the facts and the hard gate; the model owns the
+judgment call.
 
 Rules live in a mounted **YAML file** (`config/activities.yaml`), deserialized at startup into
 strict Rust types with `serde` — config-driven **and** compiler-validated: a malformed file
@@ -266,11 +273,13 @@ committed as code.
   **Ministral-3-3B-Instruct-2512 Q4_K_M** (2.15 GB) on the same matrix: all inverse-preference
   cases pass without scaffolding tuned for it, reasoning prose is markedly better (cites the
   deciding condition with real numbers, no self-contradiction), and its one deviation from the
-  strict per-activity guidance — recommending nature sightseeing at 6 km visibility because
-  the other three conditions hold, explicitly citing the trade-off — was judged *realistic,
-  acceptable reasoning* rather than a failure. **Adopted as the default model**: the guidance
-  states the preference policy; a model that overrides it with sound, cited judgment is doing
-  the job we hired an LLM for. The cached model file is keyed by name (`LLM_MODEL_FILE`), so
+  then-strict guidance — recommending nature sightseeing at 6 km visibility because the other
+  three conditions hold, explicitly citing the trade-off — was judged *realistic, acceptable
+  reasoning* rather than a failure. **Adopted as the default model**: the guidance states the
+  preference policy; a model that exercises sound, cited judgment is doing the job we hired an
+  LLM for. (The guidance was subsequently softened to norms to match — see §4 — after which
+  the same model declines that visibility case on its own plain-weather reasoning; both
+  verdicts were reviewed and accepted, the judgment being the point, not the boolean.) The cached model file is keyed by name (`LLM_MODEL_FILE`), so
   swapping `LLM_MODEL_URL` can never silently reuse a stale download.
 
 ### D8. Frontend: React + TypeScript + Vite, served by axum
