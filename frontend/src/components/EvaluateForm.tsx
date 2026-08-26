@@ -1,18 +1,39 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import type { ActivityMeta } from '../api'
+
+/** A map-cell click lands here: `seq` distinguishes repeated clicks. */
+export interface Prefill {
+  city: string
+  activity: string
+  seq: number
+}
 
 interface Props {
   activities: ActivityMeta[]
   cities: string[]
   busy: boolean
+  prefill?: Prefill | null
   onSubmit: (city: string, activity: string) => void
 }
 
-export function EvaluateForm({ activities, cities, busy, onSubmit }: Props) {
+export function EvaluateForm({ activities, cities, busy, prefill, onSubmit }: Props) {
   const [city, setCity] = useState('')
   const [activity, setActivity] = useState('')
   const selectedCity = city || cities[0] || ''
   const selectedActivity = activity || activities[0]?.key || ''
+
+  useEffect(() => {
+    if (prefill) {
+      setCity(prefill.city)
+      setActivity(prefill.activity)
+    }
+  }, [prefill])
+
+  // Map cities carry the geocoder's canonical spelling ("Teverya"), which may
+  // not be in the configured list — surface it as an extra option rather than
+  // rendering an empty select.
+  const cityOptions =
+    selectedCity && !cities.includes(selectedCity) ? [...cities, selectedCity] : cities
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -25,7 +46,7 @@ export function EvaluateForm({ activities, cities, busy, onSubmit }: Props) {
       <label>
         City
         <select value={selectedCity} onChange={(e) => setCity(e.target.value)}>
-          {cities.map((c) => (
+          {cityOptions.map((c) => (
             <option key={c} value={c}>
               {c}
             </option>

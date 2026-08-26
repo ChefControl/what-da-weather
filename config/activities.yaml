@@ -20,11 +20,27 @@
 
 scheduler:
   # Overridable per deployment via the SCHEDULER_INTERVAL_MINUTES env var.
-  interval_minutes: 1
+  # Worst case is cities x activities LLM calls per tick, evaluated serially
+  # (~1.5s each on the D7 CPU budget): 12 x 3 = 36 calls ~ 54s, so a 2-minute
+  # tick holds them with headroom. Grow the city list past that and the
+  # interval must grow with it.
+  interval_minutes: 2
+  # Spellings must resolve on the Open-Meteo geocoder (e.g. "Beer Sheva"
+  # returns nothing; "Beersheba" works). Coastal/inland/desert/north spread
+  # so the map's Voronoi cells differ meaningfully.
   cities:
     - "Tel Aviv"
+    - "Jerusalem"
     - "Haifa"
+    - "Beersheba"
     - "Eilat"
+    - "Netanya"
+    - "Ashdod"
+    - "Ashkelon"
+    - "Rishon LeZion"
+    - "Petah Tikva"
+    - "Tiberias"
+    - "Nazareth"
 
 activities:
   matkot:

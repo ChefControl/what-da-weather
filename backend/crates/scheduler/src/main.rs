@@ -65,25 +65,39 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|v| v.parse::<u64>().ok())
         .filter(|m| *m >= 1)
         .unwrap_or(config.scheduler.interval_minutes);
-    let mut interval = tokio::time::interval(Duration::from_secs(interval_minutes * 60));
+    let tick_window = Duration::from_secs(interval_minutes * 60);
+    let mut interval = tokio::time::interval(tick_window);
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    // Spread the pairs across the tick window (one slot each) instead of
+    // firing them back-to-back: a user evaluation arriving mid-tick queues
+    // behind at most ~one in-flight verdict on the single-slot LLM, and the
+    // per-tick latency spike flattens out in Prometheus.
+    let pair_count = (config.scheduler.cities.len() * config.activities.len()).max(1);
+    let slot = tick_window / pair_count as u32;
 
     tracing::info!(
         interval_minutes,
+        slot_seconds = slot.as_secs_f64(),
         cities = ?config.scheduler.cities,
         activities = config.activities.len(),
         "scheduler started"
     );
     loop {
         interval.tick().await; // first tick fires immediately
-        run_tick(&client, &api_url, &config).await;
+        run_tick(&client, &api_url, &config, slot).await;
         TICKS.inc();
     }
 }
 
-async fn run_tick(client: &reqwest::Client, api_url: &str, config: &AppConfig) {
+async fn run_tick(client: &reqwest::Client, api_url: &str, config: &AppConfig, slot: Duration) {
+    let mut slots = tokio::time::interval(slot);
+    // An evaluation running past its slot just delays the next one; skipped
+    // slots must not burst afterwards or the spreading is lost.
+    slots.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     for city in &config.scheduler.cities {
         for (key, activity) in &config.activities {
+            slots.tick().await; // first slot fires immediately
             let body = serde_json::json!({
                 "city": city,
                 "activity": key,

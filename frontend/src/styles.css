@@ -329,6 +329,239 @@ button.ghost {
   gap: 0.5rem;
 }
 
+/* ---- view switcher & notification filter ---- */
+
+.view-switch {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.view-switch .ghost.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.notify-filter {
+  position: relative;
+}
+
+.notify-filter summary {
+  list-style: none;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.85rem;
+}
+
+.notify-filter summary::-webkit-details-marker {
+  display: none;
+}
+
+.notify-filter[open] summary {
+  border-color: var(--accent);
+}
+
+.notify-filter-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  z-index: 20;
+  display: grid;
+  gap: 0.35rem;
+  min-width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.notify-filter-panel label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.notify-filter-panel input[type='checkbox'] {
+  accent-color: var(--accent);
+  width: 1rem;
+  height: 1rem;
+}
+
+/* ---- activity map ---- */
+
+.map-claim {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+}
+
+.map-layout {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.map-canvas {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.map-cell {
+  stroke: var(--bg);
+  stroke-width: 1;
+  cursor: pointer;
+  transition: fill-opacity 0.15s;
+}
+
+.map-cell.ok {
+  fill: var(--ok);
+  fill-opacity: 0.45;
+}
+
+.map-cell.nope {
+  fill: var(--nope);
+  fill-opacity: 0.35;
+}
+
+.map-cell.none {
+  fill: var(--muted);
+  fill-opacity: 0.18;
+}
+
+.map-cell:hover {
+  fill-opacity: 0.7;
+}
+
+.map-cell.flash {
+  animation: cell-flash 2.4s ease-out;
+}
+
+@keyframes cell-flash {
+  0%,
+  30%,
+  60% {
+    fill-opacity: 0.95;
+  }
+  15%,
+  45% {
+    fill-opacity: 0.25;
+  }
+  100% {
+    fill-opacity: 0.45;
+  }
+}
+
+.map-base {
+  fill: var(--surface-2);
+  stroke: none;
+}
+
+.map-outline {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.45);
+  stroke-width: 1.2;
+}
+
+.map-city circle {
+  fill: var(--text);
+}
+
+.map-city text {
+  fill: var(--text);
+  font-size: 9px;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 2px;
+}
+
+.map-tooltip {
+  position: absolute;
+  z-index: 15;
+  /* max-content beats absolute positioning's shrink-to-fit, which would
+     otherwise squeeze the tooltip into the space left of the map edge. */
+  width: max-content;
+  max-width: 260px;
+  background: var(--surface-2);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  pointer-events: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.map-tooltip p {
+  margin: 0.25rem 0;
+}
+
+.tooltip-verdict {
+  display: block;
+  font-weight: 600;
+}
+
+.tooltip-verdict.ok {
+  color: var(--ok);
+}
+
+.tooltip-verdict.nope {
+  color: var(--nope);
+}
+
+.tooltip-verdict.none {
+  color: var(--muted);
+}
+
+.map-empty {
+  position: absolute;
+  inset: 40% 0 auto;
+  text-align: center;
+}
+
+.map-side {
+  flex: 1 1 220px;
+  min-width: 200px;
+  font-size: 0.9rem;
+}
+
+.map-legend {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.map-legend .swatch {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 3px;
+  margin-right: 0.4rem;
+  vertical-align: -0.1rem;
+}
+
+.swatch.ok {
+  background: var(--ok);
+  opacity: 0.7;
+}
+
+.swatch.nope {
+  background: var(--nope);
+  opacity: 0.6;
+}
+
+.swatch.none {
+  background: var(--muted);
+  opacity: 0.4;
+}
+
+.map-attribution a {
+  color: var(--muted);
+}
+
 /* ---- toasts ---- */
 
 .toasts {
