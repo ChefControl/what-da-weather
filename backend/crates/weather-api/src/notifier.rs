@@ -94,6 +94,7 @@ mod tests {
                 humidity_pct: 40.0,
                 precipitation_mm: 0.0,
                 cloud_cover_pct: 10.0,
+                visibility_km: 20.0,
                 weather_code: 0,
                 is_day: true,
             },

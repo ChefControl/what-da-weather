@@ -24,10 +24,11 @@ describe('weatherSummary', () => {
       humidity_pct: 55,
       precipitation_mm: 0,
       cloud_cover_pct: 20,
+      visibility_km: 24.14,
       weather_code: 1,
       is_day: true,
     })
-    expect(s).toBe('28.5°C · wind 12 km/h · humidity 55% · rain 0.0 mm · clouds 20%')
+    expect(s).toBe('28.5°C · wind 12 km/h · humidity 55% · rain 0.0 mm · clouds 20% · visibility 24 km')
   })
 })
 

@@ -22,6 +22,7 @@ export function weatherSummary(w: Weather): string {
     `humidity ${w.humidity_pct.toFixed(0)}%`,
     `rain ${w.precipitation_mm.toFixed(1)} mm`,
     `clouds ${w.cloud_cover_pct.toFixed(0)}%`,
+    `visibility ${w.visibility_km.toFixed(0)} km`,
   ].join(' · ')
 }
 

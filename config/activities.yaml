@@ -11,8 +11,8 @@
 #               the rule-based fallback verdict when the LLM is unavailable
 #               (recommended when at least half are satisfied).
 #
-# Constraint params: temperature_c, wind_kmh, humidity_pct, precipitation_mm, cloud_cover_pct.
-# Each constraint needs `min`, `max`, or both.
+# Constraint params: temperature_c, wind_kmh, humidity_pct, precipitation_mm,
+# cloud_cover_pct, visibility_km. Each constraint needs `min`, `max`, or both.
 
 scheduler:
   interval_minutes: 10
@@ -24,24 +24,27 @@ scheduler:
 activities:
   matkot:
     name: "Matkot at the beach"
-    # Hard gate on local daylight: Open-Meteo's is_day is computed from sun
-    # position at the city's coordinates, so this is timezone-correct for free.
+    # Comfortable temp, almost no wind, visibility not extremely low, sun up.
     require_daylight: true
     required:
-      - param: wind_kmh
-        max: 25
-        description: "Wind must stay below 25 km/h - matkot is impossible in strong wind"
       - param: temperature_c
         min: 18
-        description: "Too cold for the beach below 18 C"
+        max: 34
+        description: "Comfortable beach temperature (18-34 C)"
+      - param: wind_kmh
+        max: 12
+        description: "Almost no wind - the ball flies straight"
+      - param: visibility_km
+        min: 2
+        description: "Visibility must not be extremely low"
       - param: precipitation_mm
         max: 0.5
         description: "No meaningful rain"
     preferred:
       - param: temperature_c
         min: 23
-        max: 32
-        description: "Pleasantly warm (23-32 C)"
+        max: 30
+        description: "Pleasantly warm (23-30 C)"
       - param: cloud_cover_pct
         max: 40
         description: "Mostly sunny"
@@ -51,42 +54,40 @@ activities:
 
   nature:
     name: "Nature sightseeing"
+    # Comfortable temp, no extreme wind, good visibility, sun up.
+    require_daylight: true
     required:
-      - param: wind_kmh
-        max: 50
-        description: "No storm-force wind"
       - param: temperature_c
-        max: 38
-        description: "No extreme heat"
-      - param: precipitation_mm
-        max: 4
-        description: "No heavy rain"
+        min: 12
+        max: 34
+        description: "Comfortable temperature (12-34 C)"
+      - param: wind_kmh
+        max: 40
+        description: "No extreme wind"
+      - param: visibility_km
+        min: 5
+        description: "Good visibility - sightseeing needs sight"
     preferred:
       - param: temperature_c
-        min: 15
+        min: 16
         max: 28
-        description: "Mild temperatures (15-28 C)"
-      - param: cloud_cover_pct
-        max: 60
-        description: "Reasonably clear sky"
+        description: "Pleasant hiking temperature (16-28 C)"
+      - param: visibility_km
+        min: 15
+        description: "Crisp long-distance views"
       - param: wind_kmh
         max: 20
         description: "Calm air"
 
   gaming:
     name: "Gaming (indoors)"
+    # The inverse preference: harsh weather outside makes gaming rank higher.
+    # Visibility and sun position deliberately do not matter.
     required: []
     preferred:
-      # The inverse preference: gaming ranks higher the worse it is outside.
-      - param: precipitation_mm
-        min: 0.2
-        description: "Rain outside makes staying in sweeter"
-      - param: wind_kmh
-        min: 30
-        description: "Windy outside"
       - param: temperature_c
-        max: 12
-        description: "Cold outside"
-      - param: cloud_cover_pct
-        min: 80
-        description: "Gloomy sky"
+        min: 30
+        description: "Hot outside - better in the AC"
+      - param: wind_kmh
+        min: 25
+        description: "Windy outside"

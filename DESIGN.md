@@ -148,9 +148,9 @@ Three predefined activities (strict — no free-text activities in v1):
 
 | Activity | Required (hard gate) | Preferred (LLM ranking input) |
 |---|---|---|
-| Matkot at the beach | **sun up at the location**, wind below threshold, temperature above floor, no heavy rain | warm, sunny, low humidity |
-| Nature sightseeing | no dangerous conditions (storm, extreme heat) | mild temps, clear sky |
-| Gaming (indoors) | none (always possible) | *bad* weather outside (storm, wind, extreme heat) — the inverse preference |
+| Matkot at the beach | sun up at the location, comfortable temperature, almost no wind, visibility not extremely low, no rain | warm, sunny, low humidity |
+| Nature sightseeing | sun up at the location, comfortable temperature, no extreme wind, good visibility | pleasant temps, crisp long views, calm air |
+| Gaming (indoors) | none (always possible; visibility and sun position deliberately irrelevant) | *harsh* weather outside (hot, windy) — the inverse preference |
 
 Rules live in a mounted **YAML file** (`config/activities.yaml`), deserialized at startup into
 strict Rust types with `serde` — config-driven **and** compiler-validated: a malformed file

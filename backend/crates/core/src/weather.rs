@@ -14,6 +14,7 @@ pub enum WeatherParam {
     HumidityPct,
     PrecipitationMm,
     CloudCoverPct,
+    VisibilityKm,
 }
 
 impl WeatherParam {
@@ -24,6 +25,7 @@ impl WeatherParam {
             WeatherParam::HumidityPct => "humidity (%)",
             WeatherParam::PrecipitationMm => "precipitation (mm)",
             WeatherParam::CloudCoverPct => "cloud cover (%)",
+            WeatherParam::VisibilityKm => "visibility (km)",
         }
     }
 }
@@ -35,6 +37,7 @@ pub struct WeatherSnapshot {
     pub humidity_pct: f64,
     pub precipitation_mm: f64,
     pub cloud_cover_pct: f64,
+    pub visibility_km: f64,
     pub weather_code: i64,
     pub is_day: bool,
 }
@@ -47,6 +50,7 @@ impl WeatherSnapshot {
             WeatherParam::HumidityPct => self.humidity_pct,
             WeatherParam::PrecipitationMm => self.precipitation_mm,
             WeatherParam::CloudCoverPct => self.cloud_cover_pct,
+            WeatherParam::VisibilityKm => self.visibility_km,
         }
     }
 }
@@ -175,6 +179,7 @@ impl OpenMeteo {
             weather_code: i64,
             wind_speed_10m: f64,
             cloud_cover: f64,
+            visibility: f64,
             is_day: i64,
         }
 
@@ -187,7 +192,7 @@ impl OpenMeteo {
                 ("longitude", longitude.to_string()),
                 (
                     "current",
-                    "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,cloud_cover,is_day"
+                    "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,cloud_cover,visibility,is_day"
                         .to_string(),
                 ),
             ])
@@ -205,6 +210,7 @@ impl OpenMeteo {
             humidity_pct: c.relative_humidity_2m,
             precipitation_mm: c.precipitation,
             cloud_cover_pct: c.cloud_cover,
+            visibility_km: c.visibility / 1000.0, // Open-Meteo reports meters
             weather_code: c.weather_code,
             is_day: c.is_day == 1,
         })
@@ -255,6 +261,7 @@ mod tests {
                     "weather_code": 1,
                     "wind_speed_10m": 12.3,
                     "cloud_cover": 20.0,
+                    "visibility": 24140.0,
                     "is_day": 1
                 }
             })))
@@ -266,6 +273,7 @@ mod tests {
         assert_eq!(loc.country.as_deref(), Some("Israel"));
         assert_eq!(snap.temperature_c, 28.5);
         assert_eq!(snap.wind_kmh, 12.3);
+        assert_eq!(snap.visibility_km, 24.14); // meters converted to km
         assert!(snap.is_day);
     }
 
@@ -309,6 +317,7 @@ mod tests {
                     "weather_code": 2,
                     "wind_speed_10m": 8.0,
                     "cloud_cover": 45.0,
+                    "visibility": 8000.0,
                     "is_day": 0
                 }
             })))

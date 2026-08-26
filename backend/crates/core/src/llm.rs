@@ -158,12 +158,13 @@ pub fn build_prompt(
     let mut prompt = format!(
         "Activity: {activity_name}\n\
          Current weather: temperature {:.1} C, wind {:.1} km/h, humidity {:.0}%, \
-         precipitation {:.1} mm, cloud cover {:.0}%, {}.\n",
+         precipitation {:.1} mm, cloud cover {:.0}%, visibility {:.1} km, {}.\n",
         weather.temperature_c,
         weather.wind_kmh,
         weather.humidity_pct,
         weather.precipitation_mm,
         weather.cloud_cover_pct,
+        weather.visibility_km,
         if weather.is_day {
             "daytime"
         } else {
@@ -269,6 +270,7 @@ mod tests {
             humidity_pct: 50.0,
             precipitation_mm: 0.0,
             cloud_cover_pct: 20.0,
+            visibility_km: 20.0,
             weather_code: 1,
             is_day: true,
         };
