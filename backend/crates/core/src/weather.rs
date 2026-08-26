@@ -13,9 +13,6 @@ pub enum WeatherParam {
     WindKmh,
     PrecipitationMm,
     VisibilityKm,
-    /// 1.0 while the sun is up at the location, 0.0 at night — lets conditions
-    /// treat day/night as a checkable fact.
-    IsDay,
 }
 
 impl WeatherParam {
@@ -25,7 +22,6 @@ impl WeatherParam {
             WeatherParam::WindKmh => "wind (km/h)",
             WeatherParam::PrecipitationMm => "precipitation (mm)",
             WeatherParam::VisibilityKm => "visibility (km)",
-            WeatherParam::IsDay => "daylight (1 = day, 0 = night)",
         }
     }
 }
@@ -47,13 +43,6 @@ impl WeatherSnapshot {
             WeatherParam::WindKmh => self.wind_kmh,
             WeatherParam::PrecipitationMm => self.precipitation_mm,
             WeatherParam::VisibilityKm => self.visibility_km,
-            WeatherParam::IsDay => {
-                if self.is_day {
-                    1.0
-                } else {
-                    0.0
-                }
-            }
         }
     }
 }

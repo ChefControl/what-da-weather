@@ -6,21 +6,15 @@
 # Each activity has:
 #   require_daylight — optional hard gate: only possible while the sun is up
 #                      at the evaluated location (Open-Meteo is_day).
-#   required   — hard gate, deliberately LOOSE: blocks only conditions that
-#                make the activity impossible or unsafe. Any violation =>
-#                "not recommended", the LLM is not consulted.
-#   conditions — soft checks evaluated BY CODE and injected into the LLM
-#                prompt as pre-computed facts, so the model never does
-#                arithmetic.
-#   decision   — how conditions aggregate: `all` (default; recommended only if
-#                every condition holds) or `any` (recommended if at least one
-#                holds — inverse preferences). Code derives the expected
-#                verdict from this and overrides an LLM that contradicts it
-#                (flagged source: "corrected").
-#   prompt     — guidance telling the LLM how to decide from those checks.
+#   required  — hard gate, deliberately LOOSE: it blocks only conditions that
+#               make the activity impossible or unsafe. Any violation =>
+#               "not recommended", LLM not consulted.
+#   prompt    — free-text guidance sent to the LLM alongside the weather data.
+#               All preference nuance lives here; the LLM produces the verdict
+#               within the gate.
 #
-# Constraint params: temperature_c, wind_kmh, precipitation_mm, visibility_km,
-# is_day (1 = sun up, 0 = night). Each needs `min`, `max`, or both (inclusive).
+# Constraint params: temperature_c, wind_kmh, precipitation_mm, visibility_km.
+# Each constraint needs `min`, `max`, or both.
 
 scheduler:
   interval_minutes: 10
@@ -40,29 +34,22 @@ activities:
         description: "Not brutally cold or dangerously hot (15-38 C)"
       - param: wind_kmh
         max: 20
-        description: "Wind below 20 km/h - beyond that the ball won't fly at all"
+        description: "Wind below 20 km/h - beyond that the ball won't fly straight"
       - param: visibility_km
         min: 1
         description: "Visibility must not be extremely low"
       - param: precipitation_mm
         max: 2
         description: "No real rain"
-    conditions:
-      - param: temperature_c
-        min: 22
-        max: 31
-        description: "Warm beach temperature (22-31 C)"
-      - param: wind_kmh
-        max: 12
-        description: "Calm enough for the very light ball (wind at most 12 km/h)"
-      - param: precipitation_mm
-        max: 0
-        description: "Completely dry"
     prompt: >-
       Matkot is a beach paddle-ball game played outdoors on the sand.
-      Recommend it (recommended=true) ONLY if the "do NOT hold" list is (none).
-      If any condition does not hold, recommended=false and the reasoning must
-      cite it.
+      Apply this decision rule in order:
+      (1) If the temperature is below 22 C or above 31 C, recommended=false -
+      too cold or too hot for an enjoyable beach session.
+      (2) If the wind is above 12 km/h, recommended=false - the ball is very
+      light and will not fly straight.
+      (3) If there is any precipitation, recommended=false.
+      (4) Otherwise recommended=true - a great time for the beach.
 
   nature:
     name: "Nature sightseeing"
@@ -78,51 +65,29 @@ activities:
       - param: visibility_km
         min: 3
         description: "Sightseeing needs sight"
-    conditions:
-      - param: temperature_c
-        min: 15
-        max: 30
-        description: "Comfortable walking temperature (15-30 C)"
-      - param: wind_kmh
-        max: 25
-        description: "No strong wind"
-      - param: precipitation_mm
-        max: 0.5
-        description: "Essentially dry"
-      - param: visibility_km
-        min: 10
-        description: "Long views (at least 10 km visibility)"
     prompt: >-
       Nature sightseeing means walking outdoor trails and viewpoints.
-      Recommend it (recommended=true) ONLY if the "do NOT hold" list is (none).
-      If any condition does not hold, recommended=false and the reasoning must
-      cite it.
+      Apply this decision rule in order:
+      (1) If the temperature is below 15 C or above 30 C, recommended=false -
+      uncomfortable for hours of walking.
+      (2) If the wind is above 25 km/h, recommended=false.
+      (3) If the precipitation is above 0.5 mm, recommended=false.
+      (4) If the visibility is below 10 km, recommended=false - the views are
+      the whole point.
+      (5) Otherwise recommended=true - a fine day to be out on the trails.
 
   gaming:
     name: "Gaming (indoors)"
-    # Indoors: no hard gate. Conditions describe weather that argues for
-    # staying in - the inverse preference, hence decision: any.
+    # Indoors: no hard gate. The prompt encodes the inverse preference.
     required: []
-    decision: any
-    conditions:
-      - param: is_day
-        max: 0
-        description: "It is nighttime - outdoor time is over for the day"
-      - param: temperature_c
-        min: 32
-        description: "Very hot outside"
-      - param: temperature_c
-        max: 10
-        description: "Cold outside"
-      - param: wind_kmh
-        min: 30
-        description: "Strong wind outside"
-      - param: precipitation_mm
-        min: 0.1
-        description: "Raining outside"
     prompt: >-
-      Gaming happens indoors and is always physically possible. The computed
-      conditions describe weather that argues for STAYING IN. Look at the
-      "HOLD right now" list: if it is (none), recommended MUST be false - the
-      weather is pleasant, better to go outside than game. If anything is in
-      the "HOLD right now" list, recommended=true, citing it.
+      Gaming happens indoors, so the weather can never prevent it - the only
+      question is whether staying in beats going out. Apply this decision rule
+      in order:
+      (1) If it is nighttime, recommended=true - outdoor activities are done
+      for the day.
+      (2) If the weather outside is harsh - hotter than ~32 C, colder than
+      ~10 C, wind above ~30 km/h, or rain - recommended=true: a great time
+      to stay in and game.
+      (3) Otherwise the weather is pleasant for being outdoors:
+      recommended=false, better to go outside.

@@ -53,53 +53,6 @@ pub fn evaluate_gate(activity: &Activity, w: &WeatherSnapshot) -> GateResult {
     }
 }
 
-/// Deterministic verdict the conditions imply under the activity's policy.
-/// Used to sanity-check the LLM (which narrates and normally agrees) and as
-/// the degraded verdict when the LLM is unavailable.
-pub fn conditions_verdict(
-    policy: crate::config::DecisionPolicy,
-    conditions: &[Constraint],
-    w: &WeatherSnapshot,
-) -> (bool, String) {
-    use crate::config::DecisionPolicy;
-    if conditions.is_empty() {
-        return (
-            true,
-            "No soft conditions are defined; every hard constraint passes.".to_string(),
-        );
-    }
-    let (met, unmet): (Vec<&Constraint>, Vec<&Constraint>) =
-        conditions.iter().partition(|c| constraint_satisfied(c, w));
-    let names = |v: &[&Constraint]| {
-        v.iter()
-            .map(|c| c.description.as_str())
-            .collect::<Vec<_>>()
-            .join("; ")
-    };
-    match policy {
-        DecisionPolicy::All => {
-            if unmet.is_empty() {
-                (true, format!("All conditions hold: {}.", names(&met)))
-            } else {
-                (
-                    false,
-                    format!("Not all conditions hold; missing: {}.", names(&unmet)),
-                )
-            }
-        }
-        DecisionPolicy::Any => {
-            if met.is_empty() {
-                (
-                    false,
-                    "None of its conditions hold; nothing argues for it right now.".to_string(),
-                )
-            } else {
-                (true, format!("The weather argues for it: {}.", names(&met)))
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,8 +84,6 @@ mod tests {
             prompt: "test".to_string(),
             require_daylight,
             required,
-            conditions: vec![],
-            decision: Default::default(),
         }
     }
 
@@ -201,47 +152,5 @@ mod tests {
     fn range_constraint_is_inclusive() {
         let c = constraint(WeatherParam::TemperatureC, Some(26.0), Some(26.0));
         assert!(constraint_satisfied(&c, &snapshot()));
-    }
-
-    #[test]
-    fn conditions_verdict_all_policy() {
-        use crate::config::DecisionPolicy;
-        let conditions = vec![
-            constraint(WeatherParam::TemperatureC, Some(22.0), Some(31.0)),
-            constraint(WeatherParam::WindKmh, None, Some(12.0)),
-        ];
-        let (ok, why) = conditions_verdict(DecisionPolicy::All, &conditions, &snapshot());
-        assert!(ok);
-        assert!(why.contains("All conditions hold"));
-
-        let mut windy = snapshot();
-        windy.wind_kmh = 18.0;
-        let (ok, why) = conditions_verdict(DecisionPolicy::All, &conditions, &windy);
-        assert!(!ok);
-        assert!(why.contains("WindKmh"));
-    }
-
-    #[test]
-    fn conditions_verdict_any_policy() {
-        use crate::config::DecisionPolicy;
-        let conditions = vec![
-            constraint(WeatherParam::TemperatureC, Some(32.0), None), // hot outside
-            constraint(WeatherParam::WindKmh, Some(30.0), None),      // windy outside
-        ];
-        let (ok, _) = conditions_verdict(DecisionPolicy::Any, &conditions, &snapshot());
-        assert!(!ok); // pleasant day: nothing argues for staying in
-
-        let mut hot = snapshot();
-        hot.temperature_c = 40.0;
-        let (ok, why) = conditions_verdict(DecisionPolicy::Any, &conditions, &hot);
-        assert!(ok);
-        assert!(why.contains("argues for it"));
-    }
-
-    #[test]
-    fn conditions_verdict_empty_recommends() {
-        use crate::config::DecisionPolicy;
-        let (ok, _) = conditions_verdict(DecisionPolicy::All, &[], &snapshot());
-        assert!(ok);
     }
 }

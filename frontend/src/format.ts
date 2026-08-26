@@ -12,8 +12,6 @@ export function sourceLabel(source: VerdictSource): string {
       return 'Rule fallback (LLM unavailable)'
     case 'rules-gate':
       return 'Blocked by hard constraint'
-    case 'corrected':
-      return 'LLM overridden by rules'
   }
 }
 

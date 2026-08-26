@@ -143,52 +143,6 @@ impl IntoResponse for ApiError {
 
 // ---------- handlers ----------
 
-/// Consistency guard (DESIGN.md §4): the conditions imply a deterministic
-/// verdict under the activity's policy; the LLM narrates and normally agrees.
-/// When it contradicts the computed facts, code wins and the event is flagged
-/// `corrected` — measured, never silent.
-fn consistency_guard(
-    activity: &wdw_core::config::Activity,
-    weather: &wdw_core::weather::WeatherSnapshot,
-    verdict: wdw_core::llm::LlmVerdict,
-    latency_ms: u64,
-) -> (bool, VerdictSource, String, Option<u64>) {
-    if activity.conditions.is_empty() {
-        return (
-            verdict.recommended,
-            VerdictSource::Llm,
-            verdict.reasoning,
-            Some(latency_ms),
-        );
-    }
-    let (expected, policy_reasoning) =
-        rules::conditions_verdict(activity.decision, &activity.conditions, weather);
-    if verdict.recommended == expected {
-        (
-            verdict.recommended,
-            VerdictSource::Llm,
-            verdict.reasoning,
-            Some(latency_ms),
-        )
-    } else {
-        tracing::warn!(
-            activity = %activity.name,
-            llm_said = verdict.recommended,
-            expected,
-            "llm verdict contradicted computed conditions; overriding"
-        );
-        metrics::LLM_ERRORS
-            .with_label_values(&["inconsistent"])
-            .inc();
-        (
-            expected,
-            VerdictSource::Corrected,
-            policy_reasoning,
-            Some(latency_ms),
-        )
-    }
-}
-
 #[derive(Deserialize)]
 struct EvaluateRequest {
     city: String,
@@ -217,12 +171,7 @@ async fn debug_evaluate(
         .ok_or_else(|| ApiError::UnknownActivity(req.activity.clone()))?;
 
     let gate = rules::evaluate_gate(activity, &req.weather);
-    let prompt = wdw_core::llm::build_prompt(
-        &activity.name,
-        &activity.prompt,
-        &activity.conditions,
-        &req.weather,
-    );
+    let prompt = wdw_core::llm::build_prompt(&activity.name, &activity.prompt, &req.weather);
     let (recommended, source, reasoning, llm_latency_ms) = if !gate.passed {
         (
             false,
@@ -233,30 +182,21 @@ async fn debug_evaluate(
     } else {
         match state
             .llm
-            .verdict(
-                &activity.name,
-                &activity.prompt,
-                &activity.conditions,
-                &req.weather,
-            )
+            .verdict(&activity.name, &activity.prompt, &req.weather)
             .await
         {
-            Ok((verdict, latency_ms)) => {
-                consistency_guard(activity, &req.weather, verdict, latency_ms)
-            }
-            Err(e) => {
-                let (recommended, reasoning) = rules::conditions_verdict(
-                    activity.decision,
-                    &activity.conditions,
-                    &req.weather,
-                );
-                (
-                    recommended,
-                    VerdictSource::Fallback,
-                    format!("{reasoning} (LLM unavailable: {e}.)"),
-                    None,
-                )
-            }
+            Ok((verdict, latency_ms)) => (
+                verdict.recommended,
+                VerdictSource::Llm,
+                verdict.reasoning,
+                Some(latency_ms),
+            ),
+            Err(e) => (
+                true,
+                VerdictSource::Fallback,
+                format!("LLM unavailable ({e}); gate-only verdict."),
+                None,
+            ),
         }
     };
 
@@ -308,24 +248,26 @@ async fn evaluate(
     } else {
         match state
             .llm
-            .verdict(
-                &activity.name,
-                &activity.prompt,
-                &activity.conditions,
-                &weather,
-            )
+            .verdict(&activity.name, &activity.prompt, &weather)
             .await
         {
-            Ok((verdict, latency_ms)) => consistency_guard(activity, &weather, verdict, latency_ms),
+            Ok((verdict, latency_ms)) => (
+                verdict.recommended,
+                VerdictSource::Llm,
+                verdict.reasoning,
+                Some(latency_ms),
+            ),
             Err(e) => {
-                tracing::warn!(error = %e, "llm unavailable, using deterministic conditions verdict");
+                // Preference nuance lives in the LLM now; without it the honest
+                // degraded answer is "possible": every hard constraint passed.
+                tracing::warn!(error = %e, "llm unavailable, degrading to gate-only verdict");
                 metrics::LLM_FALLBACKS.inc();
-                let (recommended, reasoning) =
-                    rules::conditions_verdict(activity.decision, &activity.conditions, &weather);
                 (
-                    recommended,
+                    true,
                     VerdictSource::Fallback,
-                    format!("{reasoning} (LLM unavailable; rule-based verdict.)"),
+                    "All hard constraints pass; the LLM advisor is unavailable, so no \
+                     preference ranking was applied."
+                        .to_string(),
                     None,
                 )
             }
