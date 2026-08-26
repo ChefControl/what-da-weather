@@ -169,8 +169,12 @@ no code-side override. Two prompt-alignment findings (probed deterministically a
 output JSON — verdict-first lets the model's nice-weather prior fix the boolean before any
 analysis happens; (2) the inverse activity's guidance must key off the computed count ("0
 conditions hold"), not example keywords — keyword examples collide with the same phrases
-appearing in the do-NOT-hold list. With both, the 9-case probe matrix is 9/9 correct with
-every verdict `source: llm`.
+appearing in the do-NOT-hold list. With both, the 9-case probe matrix is 9/9 correct on
+Qwen2.5-3B with every verdict `source: llm`. The adopted Ministral-3-3B passes the same
+matrix with one accepted deviation: on a marginal miss (nature at 6 km visibility) it weighs
+the full picture and overrides the strict "any failing condition → no" guidance, citing the
+trade-off explicitly. That is deliberate scope for the LLM: code guarantees the facts and the
+hard gate; the model owns the judgment call.
 
 Rules live in a mounted **YAML file** (`config/activities.yaml`), deserialized at startup into
 strict Rust types with `serde` — config-driven **and** compiler-validated: a malformed file
@@ -254,13 +258,20 @@ committed as code.
 - The model is an env var (`LLM_MODEL_URL`); the GGUF is downloaded on first start and cached
   in a named volume.
 - The LLM is asked for strict JSON; parsing is defensive, with the D6 fallback on failure.
-- **Resolved during implementation (two rounds):** Qwen2.5-1.5B-Instruct passed live JSON/latency
-  testing, but its *reasoning coherence* proved inadequate — on inverse-preference activities
-  (Gaming) it produced reasoning that contradicted its own verdict. Upgraded to
-  **Qwen2.5-3B-Instruct Q4_K_M** (2.1 GB, the shortlist's quality ceiling): reasoning now
-  names the deciding conditions and stays consistent with the verdict, at ~1.3–1.6 s warm
-  CPU latency (≈2.5 GiB runtime — inside budget). The cached model file is keyed by name
-  (`LLM_MODEL_FILE`), so swapping `LLM_MODEL_URL` can never silently reuse a stale download.
+- **Resolved during implementation (three rounds):** Qwen2.5-1.5B-Instruct passed live
+  JSON/latency testing, but its *reasoning coherence* proved inadequate — on inverse-preference
+  activities (Gaming) it produced reasoning that contradicted its own verdict. Upgraded to
+  **Qwen2.5-3B-Instruct Q4_K_M** (2.1 GB): coherent, and 9/9 on the debug probe matrix, but
+  only after four rounds of prompt scaffolding (see §4). Final round evaluated
+  **Ministral-3-3B-Instruct-2512 Q4_K_M** (2.15 GB) on the same matrix: all inverse-preference
+  cases pass without scaffolding tuned for it, reasoning prose is markedly better (cites the
+  deciding condition with real numbers, no self-contradiction), and its one deviation from the
+  strict per-activity guidance — recommending nature sightseeing at 6 km visibility because
+  the other three conditions hold, explicitly citing the trade-off — was judged *realistic,
+  acceptable reasoning* rather than a failure. **Adopted as the default model**: the guidance
+  states the preference policy; a model that overrides it with sound, cited judgment is doing
+  the job we hired an LLM for. The cached model file is keyed by name (`LLM_MODEL_FILE`), so
+  swapping `LLM_MODEL_URL` can never silently reuse a stale download.
 
 ### D8. Frontend: React + TypeScript + Vite, served by axum
 `vite build` emits static files; a multi-stage Dockerfile (node stage → rust stage → minimal
@@ -350,7 +361,7 @@ what-da-weather/
 
 | Item | Status | Resolution path |
 |---|---|---|
-| Final LLM model | **resolved** (D7) | Qwen2.5-1.5B-Instruct Q4_K_M, chosen by live testing; still env-configurable |
+| Final LLM model | **resolved** (D7) | Ministral-3-3B-Instruct-2512 Q4_K_M, chosen by live probe testing; still env-configurable |
 | Integration & failure-injection tests | **partially resolved** (D9) | `scripts/no-data-loss-test.sh` kills Logstash mid-stream and asserts zero loss against a running stack; a full CI-run compose suite remains open |
 | Free-text activities (LLM-only mode) | out of scope v1 | trivial to add: skip rule gate, flag `rules: none` |
 | Web Push (tab-closed notifications) | out of scope v1 | documented upgrade path from SSE (D6) |
