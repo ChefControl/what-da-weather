@@ -19,7 +19,8 @@
 # is_day (1 = sun up, 0 = night). Each needs `min`, `max`, or both (inclusive).
 
 scheduler:
-  interval_minutes: 10
+  # Overridable per deployment via the SCHEDULER_INTERVAL_MINUTES env var.
+  interval_minutes: 1
   cities:
     - "Tel Aviv"
     - "Haifa"

@@ -58,12 +58,18 @@ async fn main() -> anyhow::Result<()> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(210))
         .build()?;
-    let mut interval =
-        tokio::time::interval(Duration::from_secs(config.scheduler.interval_minutes * 60));
+    // The config file carries the default; SCHEDULER_INTERVAL_MINUTES
+    // overrides it per deployment without editing the mounted YAML.
+    let interval_minutes = std::env::var("SCHEDULER_INTERVAL_MINUTES")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|m| *m >= 1)
+        .unwrap_or(config.scheduler.interval_minutes);
+    let mut interval = tokio::time::interval(Duration::from_secs(interval_minutes * 60));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     tracing::info!(
-        interval_minutes = config.scheduler.interval_minutes,
+        interval_minutes,
         cities = ?config.scheduler.cities,
         activities = config.activities.len(),
         "scheduler started"

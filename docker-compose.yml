@@ -39,6 +39,8 @@ services:
     environment:
       API_URL: http://weather-api:8080
       ACTIVITIES_FILE: /config/activities.yaml
+      # Empty means "use scheduler.interval_minutes from activities.yaml".
+      SCHEDULER_INTERVAL_MINUTES: ${SCHEDULER_INTERVAL_MINUTES:-}
       RUST_LOG: info
     volumes:
       - ./config:/config:ro

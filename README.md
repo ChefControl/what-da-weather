@@ -5,7 +5,8 @@ the beach, nature sightseeing, or gaming indoors) and the system checks the
 current weather, asks a **locally hosted LLM** whether it's a good idea, ships
 every evaluation through a durable **RabbitMQ → Logstash → Elasticsearch**
 pipeline, and pushes a browser notification the moment an activity *becomes*
-recommended. A scheduler re-evaluates every configured city every 10 minutes,
+recommended. A scheduler re-evaluates every configured city every minute
+(configurable via `SCHEDULER_INTERVAL_MINUTES` or `config/activities.yaml`),
 and the whole stack is monitored with Prometheus + Grafana.
 
 Full design rationale — every architectural choice and its alternatives — lives

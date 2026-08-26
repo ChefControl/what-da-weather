@@ -91,7 +91,8 @@ Two flows share the `weather-api` evaluation core:
 1. **On-demand:** user picks a city (free text, geocoded) and one of the predefined activities
    in the UI → immediate evaluation → response rendered; the event is also published to the
    pipeline.
-2. **Scheduled:** the `scheduler` binary ticks every 10 minutes over configured
+2. **Scheduled:** the `scheduler` binary ticks every minute (config default;
+   `SCHEDULER_INTERVAL_MINUTES` overrides per deployment) over configured
    (city × activity) pairs — defaults: Tel Aviv, Haifa, Eilat × all activities — calling the
    same HTTP endpoint, so both paths exercise identical code.
 
