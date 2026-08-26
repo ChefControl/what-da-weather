@@ -47,7 +47,9 @@ impl LlmClient {
             .expect("reqwest client");
         Self {
             base_url,
-            attempts,
+            // Zero attempts would make verdict() panic on `last_err.expect`;
+            // clamp so a misconfigured LLM_ATTEMPTS degrades instead of dying.
+            attempts: attempts.max(1),
             client,
         }
     }

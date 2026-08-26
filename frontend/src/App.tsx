@@ -29,10 +29,15 @@ export default function App() {
       .catch((e: Error) => setError(`Failed to load activities: ${e.message}`))
   }, [])
 
-  useNotifications((notice) => {
-    setNotices((prev) => [...prev, notice])
-    browserNotify(notice)
-  })
+  useNotifications(
+    (notice) => {
+      setNotices((prev) => [...prev, notice])
+      browserNotify(notice)
+    },
+    (missed) => {
+      setError(`Notification stream fell behind; ${missed} alert(s) may have been missed.`)
+    },
+  )
 
   const handleEvaluate = (city: string, activity: string) => {
     setBusy(true)

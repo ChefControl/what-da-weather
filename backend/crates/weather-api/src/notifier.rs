@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use tokio::sync::broadcast;
-use wdw_core::event::EvaluationEvent;
+use wdw_core::event::{EvaluationEvent, VerdictSource};
 use wdw_core::metrics;
 
 /// In-process notifier (DESIGN.md D6): keeps the last verdict per
@@ -31,8 +31,19 @@ impl Notifier {
 
     /// Record an evaluation; returns true when a notification was broadcast.
     pub fn observe(&self, event: &EvaluationEvent) -> bool {
+        // Fallback verdicts reflect an LLM outage, not the weather: they never
+        // notify and never move the stored baseline, so an outage cannot fire
+        // (or set up) a became-recommended edge.
+        if event.source == VerdictSource::Fallback {
+            return false;
+        }
         let key = (event.city.clone(), event.activity.clone());
         let mut map = self.latest.lock().expect("notifier lock");
+        // Concurrent evaluations can finish out of order; an event older than
+        // the stored one must not overwrite it or fire an edge from stale data.
+        if matches!(map.get(&key), Some(prev) if prev.timestamp >= event.timestamp) {
+            return false;
+        }
         let became_recommended =
             event.recommended && matches!(map.get(&key), Some(prev) if !prev.recommended);
         map.insert(key, event.clone());
@@ -120,6 +131,28 @@ mod tests {
         assert!(!n.observe(&event("Tel Aviv", "matkot", true))); // true -> true: silent
         assert!(!n.observe(&event("Tel Aviv", "matkot", false))); // true -> false: silent
         assert!(n.observe(&event("Tel Aviv", "matkot", true))); // false -> true again
+    }
+
+    #[test]
+    fn fallback_events_never_notify_or_move_the_baseline() {
+        let n = Notifier::new();
+        n.observe(&event("Tel Aviv", "matkot", false));
+        let mut fallback = event("Tel Aviv", "matkot", true);
+        fallback.source = VerdictSource::Fallback;
+        assert!(!n.observe(&fallback)); // outage flip: no notification
+        assert_eq!(n.snapshot().len(), 1); // baseline still the LLM verdict
+        assert!(n.observe(&event("Tel Aviv", "matkot", true))); // real verdict still edges
+    }
+
+    #[test]
+    fn stale_events_are_ignored() {
+        let n = Notifier::new();
+        let newer = event("Tel Aviv", "matkot", false);
+        let mut older = event("Tel Aviv", "matkot", true);
+        older.timestamp = newer.timestamp - chrono::Duration::seconds(5);
+        n.observe(&newer);
+        assert!(!n.observe(&older)); // late arrival of an older event: no edge
+        assert!(!n.snapshot()[0].recommended); // newer verdict still stored
     }
 
     #[test]

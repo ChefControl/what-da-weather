@@ -78,7 +78,14 @@ pub enum WeatherError {
 
 impl WeatherError {
     fn retryable(&self) -> bool {
-        matches!(self, WeatherError::Http(_))
+        match self {
+            // Transient transport failures (timeouts, resets, 5xx, mid-body
+            // decode aborts) are worth retrying; permanent client errors
+            // (4xx: bad request, rate limit, not found) fail fast instead of
+            // hammering the rate-limited provider.
+            WeatherError::Http(e) => !e.status().is_some_and(|s| s.is_client_error()),
+            _ => false,
+        }
     }
 }
 
@@ -200,9 +207,10 @@ impl OpenMeteo {
             .send()
             .await?
             .error_for_status()?
+            // Decode failures stay `Http` (retryable), matching the geocode
+            // stage: a connection reset mid-body is transient at both.
             .json()
-            .await
-            .map_err(|e| WeatherError::Malformed(e.to_string()))?;
+            .await?;
 
         let c = resp.current;
         Ok(WeatherSnapshot {

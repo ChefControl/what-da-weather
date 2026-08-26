@@ -9,7 +9,7 @@ export function sourceLabel(source: VerdictSource): string {
     case 'llm':
       return 'LLM verdict'
     case 'fallback':
-      return 'Rule fallback (LLM unavailable)'
+      return 'No recommendation (LLM unavailable)'
     case 'rules-gate':
       return 'Blocked by hard constraint'
   }

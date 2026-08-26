@@ -59,15 +59,21 @@ impl Publisher {
     }
 
     async fn try_publish(&self, payload: &[u8]) -> anyhow::Result<()> {
-        let mut guard = self.channel.lock().await;
-        if guard
-            .as_ref()
-            .map(|c| !c.status().connected())
-            .unwrap_or(true)
-        {
-            *guard = Some(self.open_channel().await?);
-        }
-        let channel = guard.as_ref().expect("channel just ensured");
+        // Hold the lock only to ensure/clone the channel: lapin's Channel is a
+        // cheap Arc-backed handle safe for concurrent use, so the network
+        // publish + confirm below run without serializing concurrent callers
+        // behind the mutex.
+        let channel = {
+            let mut guard = self.channel.lock().await;
+            if guard
+                .as_ref()
+                .map(|c| !c.status().connected())
+                .unwrap_or(true)
+            {
+                *guard = Some(self.open_channel().await?);
+            }
+            guard.as_ref().expect("channel just ensured").clone()
+        };
 
         let confirm = channel
             .basic_publish(

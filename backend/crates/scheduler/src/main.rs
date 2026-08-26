@@ -52,9 +52,11 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // Generous per-request timeout: a cold CPU-only LLM answer can take a while.
+    // Must exceed the API's additive worst case (~193s: weather retries ~62s
+    // + LLM 2x60s + 0.5s sleep + 10s publish), or a slow-but-alive LLM makes
+    // every scheduled evaluation report a client-side error the API never had.
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_secs(210))
         .build()?;
     let mut interval =
         tokio::time::interval(Duration::from_secs(config.scheduler.interval_minutes * 60));

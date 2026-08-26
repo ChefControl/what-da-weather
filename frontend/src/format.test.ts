@@ -11,7 +11,7 @@ describe('verdictLabel', () => {
 describe('sourceLabel', () => {
   it('covers every verdict source', () => {
     expect(sourceLabel('llm')).toBe('LLM verdict')
-    expect(sourceLabel('fallback')).toContain('fallback')
+    expect(sourceLabel('fallback')).toContain('LLM unavailable')
     expect(sourceLabel('rules-gate')).toContain('hard constraint')
   })
 })

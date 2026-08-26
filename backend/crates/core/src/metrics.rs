@@ -31,7 +31,7 @@ pub static LLM_LATENCY: Lazy<Histogram> = Lazy::new(|| {
 pub static LLM_FALLBACKS: Lazy<IntCounter> = Lazy::new(|| {
     register_int_counter!(
         "llm_fallbacks_total",
-        "Verdicts served by rule-based fallback"
+        "Verdicts degraded to the no-recommendation fallback"
     )
     .unwrap()
 });

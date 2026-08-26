@@ -111,9 +111,12 @@ Two flows share the `weather-api` evaluation core:
    final** — structured JSON with `reasoning` FIRST and `recommended` last, so the boolean is
    generated after (and conditioned on) the model's own analysis instead of before it.
 4. **Fallback:** if the LLM is unreachable/times out/returns garbage after bounded retries, the
-   degraded verdict is gate-only — "recommended: every hard constraint passes" — flagged
-   `source: "fallback"` (vs `source: "llm"`). Honest but coarse: preference nuance is the
-   LLM's job now, so an LLM outage costs ranking quality, never availability.
+   degraded verdict is **not recommended** — "all hard constraints pass, but the advisor is
+   unavailable, so no recommendation is made" — flagged `source: "fallback"` (vs
+   `source: "llm"`). The advisor owns all preference nuance, including gaming's inverse
+   semantics where an assumed "true" would invert the configured meaning, so without it the
+   honest answer is no recommendation, never a guess; fallback verdicts also never trigger
+   notifications. An LLM outage costs ranking quality, never availability.
 5. The full event (city, weather snapshot, activity, gate results, verdict, source, latency)
    is published to RabbitMQ and returned to the caller.
 6. The in-process **notifier** compares the verdict against its in-memory last-state map per

@@ -75,7 +75,10 @@ groups:
               expression: B
               datasource: { type: __expr__, uid: __expr__ }
               conditions:
-                - evaluator: { type: gt, params: [100] }
+                # Calibrated to system scale: the scheduler publishes ~9
+                # events per 10-minute tick, so a dead Logstash crosses 10
+                # within ~15 minutes (100 would take ~18 hours to fire).
+                - evaluator: { type: gt, params: [10] }
 
       - uid: wdw-llm-errors
         title: LLM error rate elevated
@@ -84,7 +87,7 @@ groups:
         noDataState: OK
         execErrState: Error
         annotations:
-          summary: "The local LLM is failing; verdicts are degrading to rule-based fallback."
+          summary: "The local LLM is failing; verdicts are degrading to the no-recommendation fallback."
         data:
           - refId: A
             relativeTimeRange: { from: 600, to: 0 }
@@ -109,7 +112,12 @@ groups:
               expression: B
               datasource: { type: __expr__, uid: __expr__ }
               conditions:
-                - evaluator: { type: gt, params: [0.05] }
+                # Calibrated to system scale: a total LLM outage produces at
+                # most ~18 errors per 600s = 0.03/s (0.01/s at night when the
+                # daylight gates skip the LLM), so 0.05 could never fire;
+                # 0.005 (~3 errors/10min) fires on an outage while a lone
+                # transient retry (~0.002/s) stays under.
+                - evaluator: { type: gt, params: [0.005] }
 
       - uid: wdw-dlq-nonempty
         title: Dead letter queue non-empty

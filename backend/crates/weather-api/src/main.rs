@@ -9,21 +9,22 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{any, get, post};
 use axum::{Json, Router};
 use futures::stream::{Stream, StreamExt};
 use serde::Deserialize;
+use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tokio_stream::wrappers::BroadcastStream;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
-use wdw_core::config::AppConfig;
+use wdw_core::config::{Activity, AppConfig};
 use wdw_core::event::{EvaluationEvent, VerdictSource};
 use wdw_core::llm::LlmClient;
 use wdw_core::metrics;
 use wdw_core::publish::Publisher;
 use wdw_core::rules;
-use wdw_core::weather::{OpenMeteo, WeatherError, WeatherProvider};
+use wdw_core::weather::{OpenMeteo, WeatherError, WeatherProvider, WeatherSnapshot};
 
 use notifier::Notifier;
 
@@ -80,6 +81,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/status", get(status_handler))
         .route("/api/activities", get(activities))
         .route("/api/events", get(sse_events))
+        // Unknown /api/* paths must answer JSON 404, not fall through to the
+        // SPA fallback's 200 + index.html (which breaks clients' error parsing).
+        .route("/api/{*rest}", any(api_not_found))
         .route("/healthz", get(|| async { "ok" }))
         .route("/metrics", get(|| async { metrics::render() }))
         .fallback_service(spa)
@@ -143,6 +147,65 @@ impl IntoResponse for ApiError {
 
 // ---------- handlers ----------
 
+async fn api_not_found() -> Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({"error": "unknown API route"})),
+    )
+        .into_response()
+}
+
+/// The one gate -> LLM -> degraded-fallback verdict derivation, shared by the
+/// live and debug paths so they can never drift apart.
+///
+/// When the LLM is unavailable the degraded verdict is "not recommended": the
+/// advisor owns all preference nuance — including gaming's inverse semantics,
+/// where a hardcoded "true" would invert the configured meaning — so without
+/// it the honest answer is "no recommendation", never a guess.
+async fn derive_verdict(
+    llm: &LlmClient,
+    activity: &Activity,
+    weather: &WeatherSnapshot,
+    gate: &rules::GateResult,
+) -> (bool, VerdictSource, String, Option<u64>) {
+    if !gate.passed {
+        return (
+            false,
+            VerdictSource::RulesGate,
+            format!("Blocked by hard constraints: {}", gate.failures.join("; ")),
+            None,
+        );
+    }
+    match llm
+        .verdict(
+            &activity.name,
+            &activity.prompt,
+            &activity.conditions,
+            weather,
+        )
+        .await
+    {
+        Ok((verdict, latency_ms)) => (
+            verdict.recommended,
+            VerdictSource::Llm,
+            verdict.reasoning,
+            Some(latency_ms),
+        ),
+        Err(e) => {
+            tracing::warn!(error = %e, "llm unavailable, degrading to no-recommendation fallback");
+            metrics::LLM_FALLBACKS.inc();
+            (
+                false,
+                VerdictSource::Fallback,
+                "All hard constraints pass, but the LLM advisor is unavailable, so no \
+                 recommendation is made."
+                    .to_string(),
+                None,
+            )
+        }
+    }
+}
+
 #[derive(Deserialize)]
 struct EvaluateRequest {
     city: String,
@@ -158,8 +221,9 @@ struct DebugEvaluateRequest {
 }
 
 /// Debug evaluation on caller-supplied synthetic weather: runs the identical
-/// gate + LLM path but publishes nothing, notifies nothing, and skips the
-/// business metrics — plus it returns the exact prompt sent to the LLM.
+/// gate + LLM path (the shared `derive_verdict`) but publishes nothing,
+/// notifies nothing, and skips the evaluations business metric — plus it
+/// returns the exact prompt sent to the LLM.
 async fn debug_evaluate(
     State(state): State<SharedState>,
     Json(req): Json<DebugEvaluateRequest>,
@@ -177,38 +241,8 @@ async fn debug_evaluate(
         &activity.conditions,
         &req.weather,
     );
-    let (recommended, source, reasoning, llm_latency_ms) = if !gate.passed {
-        (
-            false,
-            VerdictSource::RulesGate,
-            format!("Blocked by hard constraints: {}", gate.failures.join("; ")),
-            None,
-        )
-    } else {
-        match state
-            .llm
-            .verdict(
-                &activity.name,
-                &activity.prompt,
-                &activity.conditions,
-                &req.weather,
-            )
-            .await
-        {
-            Ok((verdict, latency_ms)) => (
-                verdict.recommended,
-                VerdictSource::Llm,
-                verdict.reasoning,
-                Some(latency_ms),
-            ),
-            Err(e) => (
-                true,
-                VerdictSource::Fallback,
-                format!("LLM unavailable ({e}); gate-only verdict."),
-                None,
-            ),
-        }
-    };
+    let (recommended, source, reasoning, llm_latency_ms) =
+        derive_verdict(&state.llm, activity, &req.weather, &gate).await;
 
     Ok(Json(serde_json::json!({
         "activity": req.activity,
@@ -248,46 +282,8 @@ async fn evaluate(
         })?;
 
     let gate = rules::evaluate_gate(activity, &weather);
-    let (recommended, source, reasoning, llm_latency_ms) = if !gate.passed {
-        (
-            false,
-            VerdictSource::RulesGate,
-            format!("Blocked by hard constraints: {}", gate.failures.join("; ")),
-            None,
-        )
-    } else {
-        match state
-            .llm
-            .verdict(
-                &activity.name,
-                &activity.prompt,
-                &activity.conditions,
-                &weather,
-            )
-            .await
-        {
-            Ok((verdict, latency_ms)) => (
-                verdict.recommended,
-                VerdictSource::Llm,
-                verdict.reasoning,
-                Some(latency_ms),
-            ),
-            Err(e) => {
-                // Preference nuance lives in the LLM now; without it the honest
-                // degraded answer is "possible": every hard constraint passed.
-                tracing::warn!(error = %e, "llm unavailable, degrading to gate-only verdict");
-                metrics::LLM_FALLBACKS.inc();
-                (
-                    true,
-                    VerdictSource::Fallback,
-                    "All hard constraints pass; the LLM advisor is unavailable, so no \
-                     preference ranking was applied."
-                        .to_string(),
-                    None,
-                )
-            }
-        }
-    };
+    let (recommended, source, reasoning, llm_latency_ms) =
+        derive_verdict(&state.llm, activity, &weather, &gate).await;
 
     let event = EvaluationEvent {
         event_id: uuid::Uuid::new_v4().to_string(),
@@ -332,16 +328,19 @@ async fn evaluate(
         Ok(Ok(())) => true,
         Ok(Err(e)) => {
             tracing::error!(error = %e, "event publish failed after retries");
+            metrics::PUBLISH_DROPPED.inc();
             false
         }
         Err(_) => {
-            tracing::error!("event publish timed out");
+            // The timeout cancels publish at an arbitrary await point: the
+            // frame may already sit on the durable queue with only the confirm
+            // outstanding. That is "unconfirmed", not "dropped" — and because
+            // Logstash indexes by event_id, a delivered-but-unconfirmed event
+            // (or a re-send of the same event) stays exactly-once in ES.
+            tracing::error!("event publish timed out; delivery unconfirmed");
             false
         }
     };
-    if !published {
-        metrics::PUBLISH_DROPPED.inc();
-    }
 
     state.notifier.observe(&event);
 
@@ -412,11 +411,17 @@ async fn sse_events(
     State(state): State<SharedState>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let guard = SseGuard::new();
-    let stream = BroadcastStream::new(state.notifier.subscribe())
-        .filter_map(|msg| futures::future::ready(msg.ok()))
-        .map(move |msg| {
-            let _connected = &guard; // gauge decrements when the stream drops
-            Ok(Event::default().event("recommendation").data(msg))
-        });
+    let stream = BroadcastStream::new(state.notifier.subscribe()).map(move |msg| {
+        let _connected = &guard; // gauge decrements when the stream drops
+        Ok(match msg {
+            Ok(data) => Event::default().event("recommendation").data(data),
+            // A slow client fell behind the broadcast buffer: those payloads
+            // are gone, so say so instead of dropping the loss silently.
+            Err(BroadcastStreamRecvError::Lagged(missed)) => {
+                tracing::warn!(missed, "sse client lagged; notifications dropped");
+                Event::default().event("lagged").data(missed.to_string())
+            }
+        })
+    });
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
