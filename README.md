@@ -158,3 +158,73 @@ dependencies rebuild only when manifests change.
 | `GET /api/events` | SSE stream of became-recommended notifications |
 | `GET /metrics` | Prometheus metrics |
 | `GET /healthz` | Liveness |
+
+## FAQ
+
+**Q1. Why Non-relational DB? Why ES?**
+
+We are manipulating doc-like events over a time series (weather + verdict at 10AM) that never mutate — write once, no edits backwards, no Join/Union. That's exactly what ES is good at: aggregating documents over time buckets, and it's natively supported by Logstash & Grafana. Small bonus: event_id is also the ES document id, so a redelivered message just overwrites itself (idempotent, no dupes).
+
+A relational DB here would introduce schema migrations without really any benefit — we don't use anything relational.
+
+(Also the assignment literally names Logstash — so ELK-shaped pipeline is the configured, battle-tested path instead of writing my own consumer.)
+
+**Q2. Why queue and not event streaming?**
+
+Our architecture is a single queue fed into a single consumer:
+
+```
+Backend -> Queue -> Logstash -> Elasticsearch
+```
+
+Event streaming like Kafka shines in one-to-many publishing (one source of truth published to multiple microservices, i.e. SaaS customer onboarding/offboarding) — we have one consumer. And because all the data lands in ES anyway, there is no real use case for replayability (the other big Kafka advantage) — the "replayable history" already lives in the DB.
+
+What RabbitMQ gives us for free: per-message ack, retry, TTL and dead-lettering as native one-liners (in Kafka these are hand-rolled patterns, and a poison record blocks its whole partition). Plus a much lower memory footprint — Kafka costs ~1GB+ out of a 7.65GB Docker VM.
+
+When to revisit: if independent consumer types multiply, one-log/many-cursors wins — at that point we migrate to Kafka.
+
+**Q3. Why Rust?**
+
+Rust is compiled and memory safe with strict types by default, which allows compiler-driven design with LLM — the compiler kills whole classes of bugs (types, ownership, null) before review, so what's left for me and the tests is just logic. This makes it easy to offload development to an LLM: if it compiles, a whole category of bugs is already gone — the tests cover the rest. ([talk from AI Engineer conference](https://www.youtube.com/watch?v=ugUeZ8-b-u0&t=842s))
+
+axum over actix — tokio/tower native, /metrics and SSE with no friction. One workspace, two binaries (api + scheduler) sharing a lib crate — separate failure domains, no code duplication.
+
+**Q4. Why TypeScript?**
+
+All of the Rust points above — although softer than Rust. tsc runs in CI, so if the backend API shape drifts, the build fails, not the demo.
+
+**Q5. Why is alerting logic in the backend?**
+
+Our "product" sends real-time alerts which have no value outside a 5-10 minute window, and currently we have only one interface (website).
+
+Based on that, nothing stores the alerts at all — the backend keeps in memory only the last verdict per (city, activity), just to detect the not-recommended -> recommended edge, then pushes SSE. A missed notification is acceptable by design — ES stays the durable record.
+
+Two designs I rejected on the way: alerting through a Grafana webhook (turns an ops tool into a runtime dependency of the product — monitoring alerts operators, user notifications are a product feature), and a dedicated notify queue (durability buys nothing for an alert that's worthless 10 minutes later).
+
+If the use case arises (mobile app, email, alert history) — that's the trigger to build a proper notification pipeline. For our small app I went with simplicity (KISS principle).
+
+**Q6. Why choose LLM "X"?**
+
+Empirically, in rounds.
+
+*Sizing the hardware envelope:* I used llmfit to determine what can run in my Docker Desktop VM (7.65GB RAM, 10 CPUs, no GPU — ~2.5GB model budget next to ELK) — that shortlists 1-3B models with ready GGUF quants.
+
+*What I actually need from the model:* No novel capabilities (tool use etc.) — just fast e2e CPU inference and structured output (JSON).
+
+*Eval at scale via OpenRouter:* Instead of downloading every candidate and testing serially on my laptop, I ran the exact production prompts (same system prompt, same request shape) against all in-budget candidates in parallel through OpenRouter — hours of local testing compressed into minutes. Ministral-3-3B was the only in-budget model to go 9/9 (incumbent baseline was 8/9). Caveat I kept in mind: OpenRouter serves full-precision weights, so cloud scores are an upper bound — the final Q4 quant was re-validated locally through the debug page before adoption.
+
+*Live testing rounds:*
+
+- Qwen2.5-1.5B — passed JSON + latency but failed prompt eval testing (reasoning contradicted its own verdict) — out.
+- Qwen2.5-3B — 9/9 on my probe matrix, but needed several rounds of prompt scaffolding.
+- Ministral-3-3B — passed the same matrix without scaffolding tuned for it, better reasoning — adopted.
+
+*The agency discovery:* Ministral occasionally deviated from strict guidance — e.g. recommending sightseeing at 6km visibility because the other conditions held, explicitly citing the trade-off. I judged that a feature, not a bug: sound, cited judgment on marginal cases is exactly what I hired an LLM for (a rules engine could do blind obedience). So I softened the guidance from hard rules to norms ("should normally") and let the model own the judgment call — code still guarantees the facts and the hard gate.
+
+*The deeper decision:* The LLM never does arithmetic — a 3B model demonstrably can't (measured: it misses "18 > 12") — so code computes every condition and the model judges pre-computed facts.
+
+*Swappability:* The model itself is an env var — swapping is config, not a rebuild.
+
+**Q7. Why Grafana and not Kibana?**
+
+Grafana is the industry standard for infra observability, and it also queries Elasticsearch — the opposite is not true (Kibana only fronts ES, it can't read Prometheus, so infra metrics would need a second tool). Free-tier Kibana also lacks webhook-class alert connectors. "Why not add both?" — single house for all queries, provisioned as code (datasources, dashboards, alert rules committed in the repo) — simpler and more manageable.

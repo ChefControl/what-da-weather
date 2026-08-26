@@ -229,8 +229,7 @@ The provider sits behind a small Rust trait so OpenWeather can be slotted in via
   document stored in ES, so "replayable history" already lives in the database. Kafka also costs
   ~1 GB+ of a 7.65 GB Docker VM. **Trigger to revisit:** if independent subscriber types
   multiply (rule of thumb: a handful+, or any consumer needing history bootstrap), the
-  one-log/N-cursors model wins and the broker choice should be re-evaluated (RabbitMQ Streams
-  being the on-ramp).
+  one-log/N-cursors model wins and we migrate to Kafka.
 - **Why Elasticsearch as the DB:** natural fit for time-based JSON documents and the
   aggregation queries a dashboard needs; first-class Logstash output; Grafana datasource.
 
