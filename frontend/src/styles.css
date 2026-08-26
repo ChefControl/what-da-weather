@@ -261,6 +261,74 @@ button.ghost {
   font-size: 0.75rem;
 }
 
+/* ---- debug panel ---- */
+
+.debug-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.debug-panel label {
+  margin-bottom: 0.75rem;
+}
+
+.slider-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 90px;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  font-size: 0.9rem;
+}
+
+.slider-label {
+  color: var(--muted);
+}
+
+.slider-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.slider-row input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.slider-row input[type='checkbox'] {
+  justify-self: start;
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--accent);
+}
+
+.debug-panel button {
+  margin-top: 0.75rem;
+}
+
+.prompt-details {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.prompt-details summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.prompt-details pre {
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 0.75rem;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 /* ---- toasts ---- */
 
 .toasts {

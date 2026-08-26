@@ -6,6 +6,7 @@ import {
   type EvaluateResponse,
   type Notice,
 } from './api'
+import { DebugPanel } from './components/DebugPanel'
 import { EvaluateForm } from './components/EvaluateForm'
 import { Toasts } from './components/Toasts'
 import { VerdictCard } from './components/VerdictCard'
@@ -20,6 +21,7 @@ export default function App() {
   const [notifPermission, setNotifPermission] = useState(
     'Notification' in window ? Notification.permission : 'unsupported',
   )
+  const [view, setView] = useState<'main' | 'debug'>('main')
 
   useEffect(() => {
     getActivities()
@@ -54,23 +56,34 @@ export default function App() {
           🌦️ What Da Weather
           <span className="subtitle">should you go out, or boot up?</span>
         </h1>
-        {notifPermission === 'default' && (
-          <button className="ghost" onClick={requestNotifications}>
-            🔔 Enable notifications
+        <div className="header-actions">
+          {notifPermission === 'default' && (
+            <button className="ghost" onClick={requestNotifications}>
+              🔔 Enable notifications
+            </button>
+          )}
+          <button className="ghost" onClick={() => setView(view === 'main' ? 'debug' : 'main')}>
+            {view === 'main' ? '🛠 Debug' : '← Back'}
           </button>
-        )}
+        </div>
       </header>
 
       {error && <div className="card error-banner">⚠️ {error}</div>}
 
       <main>
-        <EvaluateForm
-          activities={meta.activities}
-          cities={meta.cities}
-          busy={busy}
-          onSubmit={handleEvaluate}
-        />
-        {result && <VerdictCard event={result.event} published={result.published} />}
+        {view === 'main' ? (
+          <>
+            <EvaluateForm
+              activities={meta.activities}
+              cities={meta.cities}
+              busy={busy}
+              onSubmit={handleEvaluate}
+            />
+            {result && <VerdictCard event={result.event} published={result.published} />}
+          </>
+        ) : (
+          <DebugPanel activities={meta.activities} />
+        )}
       </main>
 
       <Toasts

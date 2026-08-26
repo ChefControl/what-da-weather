@@ -151,6 +151,7 @@ dependencies rebuild only when manifests change.
 | Endpoint | Description |
 |---|---|
 | `POST /api/evaluate` | `{"city": "Tel Aviv", "activity": "matkot"}` → full evaluation event + whether it was durably published |
+| `POST /api/debug/evaluate` | `{"activity": ..., "weather": {...}}` — synthetic weather through the identical gate → LLM path; returns the verdict **and the exact prompt sent**. Nothing published or notified. Drives the UI's 🛠 Debug view (sliders per parameter) |
 | `GET /api/status` | Latest verdict per (city, activity) — Elasticsearch merged with in-memory state |
 | `GET /api/activities` | Configured activities and scheduler cities |
 | `GET /api/events` | SSE stream of became-recommended notifications |

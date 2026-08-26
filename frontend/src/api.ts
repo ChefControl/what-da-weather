@@ -82,3 +82,24 @@ export function evaluate(city: string, activity: string): Promise<EvaluateRespon
     body: JSON.stringify({ city, activity, trigger: 'user' }),
   })
 }
+
+export interface DebugResponse {
+  activity: string
+  activity_name: string
+  weather: Weather
+  gate_passed: boolean
+  gate_failures: string[]
+  recommended: boolean
+  source: VerdictSource
+  reasoning: string
+  llm_latency_ms?: number | null
+  prompt: string
+}
+
+export function debugEvaluate(activity: string, weather: Weather): Promise<DebugResponse> {
+  return request('/api/debug/evaluate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ activity, weather }),
+  })
+}

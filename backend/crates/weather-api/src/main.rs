@@ -76,6 +76,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/api/evaluate", post(evaluate))
+        .route("/api/debug/evaluate", post(debug_evaluate))
         .route("/api/status", get(status_handler))
         .route("/api/activities", get(activities))
         .route("/api/events", get(sse_events))
@@ -148,6 +149,69 @@ struct EvaluateRequest {
     activity: String,
     #[serde(default)]
     trigger: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct DebugEvaluateRequest {
+    activity: String,
+    weather: wdw_core::weather::WeatherSnapshot,
+}
+
+/// Debug evaluation on caller-supplied synthetic weather: runs the identical
+/// gate + LLM path but publishes nothing, notifies nothing, and skips the
+/// business metrics — plus it returns the exact prompt sent to the LLM.
+async fn debug_evaluate(
+    State(state): State<SharedState>,
+    Json(req): Json<DebugEvaluateRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let activity = state
+        .config
+        .activities
+        .get(&req.activity)
+        .ok_or_else(|| ApiError::UnknownActivity(req.activity.clone()))?;
+
+    let gate = rules::evaluate_gate(activity, &req.weather);
+    let prompt = wdw_core::llm::build_prompt(&activity.name, &activity.prompt, &req.weather);
+    let (recommended, source, reasoning, llm_latency_ms) = if !gate.passed {
+        (
+            false,
+            VerdictSource::RulesGate,
+            format!("Blocked by hard constraints: {}", gate.failures.join("; ")),
+            None,
+        )
+    } else {
+        match state
+            .llm
+            .verdict(&activity.name, &activity.prompt, &req.weather)
+            .await
+        {
+            Ok((verdict, latency_ms)) => (
+                verdict.recommended,
+                VerdictSource::Llm,
+                verdict.reasoning,
+                Some(latency_ms),
+            ),
+            Err(e) => (
+                true,
+                VerdictSource::Fallback,
+                format!("LLM unavailable ({e}); gate-only verdict."),
+                None,
+            ),
+        }
+    };
+
+    Ok(Json(serde_json::json!({
+        "activity": req.activity,
+        "activity_name": activity.name,
+        "weather": req.weather,
+        "gate_passed": gate.passed,
+        "gate_failures": gate.failures,
+        "recommended": recommended,
+        "source": source,
+        "reasoning": reasoning,
+        "llm_latency_ms": llm_latency_ms,
+        "prompt": prompt,
+    })))
 }
 
 async fn evaluate(
