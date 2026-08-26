@@ -91,23 +91,33 @@ Two flows share the `weather-api` evaluation core:
 1. **On-demand:** user picks a city (free text, geocoded) and one of the predefined activities
    in the UI → immediate evaluation → response rendered; the event is also published to the
    pipeline.
-2. **Scheduled:** the `scheduler` binary ticks every 10 minutes over configured
+2. **Scheduled:** the `scheduler` binary ticks every minute (config default;
+   `SCHEDULER_INTERVAL_MINUTES` overrides per deployment) over configured
    (city × activity) pairs — defaults: Tel Aviv, Haifa, Eilat × all activities — calling the
    same HTTP endpoint, so both paths exercise identical code.
 
 ### Evaluation core (per request)
 
 1. Geocode city + fetch current weather from Open-Meteo (retry with backoff).
-2. **Rule gate:** each activity defines **required** parameters (hard constraints — e.g. Matkot
-   is impossible above a wind threshold or below a temperature floor). If a required constraint
-   fails, the verdict is "not recommended" with the failed constraints as the reason; the LLM is
-   not consulted.
-3. **LLM ranking:** if required constraints pass, llama.cpp is prompted with the weather data
-   and the activity's **preferred** parameters (soft preferences — e.g. Gaming is preferred in
-   bad weather) and returns a structured JSON verdict + human-readable reasoning.
-4. **Fallback:** if the LLM is unreachable/times out/returns garbage after bounded retries, a
-   rule-based verdict from the preferred parameters is produced and flagged `source: "fallback"`
-   (vs `source: "llm"`). The system degrades, never breaks.
+2. **Rule gate:** each activity defines **required** parameters — deliberately loose hard
+   constraints that only block the impossible or unsafe (e.g. Matkot in storm-force wind, or
+   any daylight-gated activity after sunset). If a required constraint fails, the verdict is
+   "not recommended" with the failed constraints as the reason; the LLM is not consulted.
+3. **LLM ranking:** if the gate passes, code evaluates the activity's soft **conditions**
+   (structured constraints from config) and hands llama.cpp the weather data, the activity's
+   guidance prompt, and the pre-computed results as grouped "conditions that HOLD / do NOT
+   hold" lists plus a computed "N of M conditions hold" summary. The comparisons are done in
+   code because a small model cannot reliably execute numeric comparison chains (measured on
+   the debug page); the model's job is judgment over stated facts, and **its verdict is
+   final** — structured JSON with `reasoning` FIRST and `recommended` last, so the boolean is
+   generated after (and conditioned on) the model's own analysis instead of before it.
+4. **Fallback:** if the LLM is unreachable/times out/returns garbage after bounded retries, the
+   degraded verdict is **not recommended** — "all hard constraints pass, but the advisor is
+   unavailable, so no recommendation is made" — flagged `source: "fallback"` (vs
+   `source: "llm"`). The advisor owns all preference nuance, including gaming's inverse
+   semantics where an assumed "true" would invert the configured meaning, so without it the
+   honest answer is no recommendation, never a guess; fallback verdicts also never trigger
+   notifications. An LLM outage costs ranking quality, never availability.
 5. The full event (city, weather snapshot, activity, gate results, verdict, source, latency)
    is published to RabbitMQ and returned to the caller.
 6. The in-process **notifier** compares the verdict against its in-memory last-state map per
@@ -129,11 +139,12 @@ sequenceDiagram
     alt required rules fail
         A->>A: verdict: not recommended (gate reasons)
     else rules pass
-        A->>L: prompt (weather + preferred params)
+        A->>A: evaluate soft conditions (code does the math)
+        A->>L: prompt (weather + guidance + computed HOLD / NOT-hold lists)
         alt LLM responds with valid JSON
             L-->>A: verdict + reasoning (source: llm)
         else LLM down / timeout / garbage
-            A->>A: rule-based verdict (source: fallback)
+            A->>A: gate-only verdict (source: fallback)
         end
     end
     A->>Q: publish full event (persistent, publisher confirm)
@@ -146,15 +157,43 @@ sequenceDiagram
 
 Three predefined activities (strict — no free-text activities in v1):
 
-| Activity | Required (hard gate) | Preferred (LLM ranking input) |
+| Activity | Required (loose hard gate) | Soft conditions (computed by code, judged by the LLM) |
 |---|---|---|
-| Matkot at the beach | wind below threshold, temperature above floor, no heavy rain | warm, sunny, low humidity |
-| Nature sightseeing | no dangerous conditions (storm, extreme heat) | mild temps, clear sky |
-| Gaming (indoors) | none (always possible) | *bad* weather outside (storm, wind, extreme heat) — the inverse preference |
+| Matkot at the beach | sun up at the location, 15–38 °C, wind ≤ 20 km/h, visibility ≥ 1 km, rain ≤ 2 mm | 22–31 °C, wind ≤ 12 km/h, completely dry — recommend only when all hold |
+| Nature sightseeing | sun up at the location, 8–38 °C, wind ≤ 50 km/h, visibility ≥ 3 km | 15–30 °C, wind ≤ 25 km/h, essentially dry, visibility ≥ 10 km — recommend only when all hold |
+| Gaming (indoors) | none (always physically possible) | inverse: nighttime, or hot ≥ 32 °C / cold ≤ 10 °C / wind ≥ 30 km/h / rain argue for staying in — recommend when any holds |
+
+Two earlier iterations shaped this: machine-checkable **preferred** lists fought the LLM's
+qualitative judgment, and free-text numbered rules asked a 3B model to do arithmetic it
+demonstrably cannot (probed via the debug page: comparisons like "18 > 12" were missed). The
+resolution is a split: **code computes each condition; the LLM reads the computed facts,
+applies the activity's guidance prompt, and decides.** The verdict is the LLM's own — there is
+no code-side override. Two prompt-alignment findings (probed deterministically at temperature
+0.0 on the debug page) make that reliable: (1) `reasoning` must precede `recommended` in the
+output JSON — verdict-first lets the model's nice-weather prior fix the boolean before any
+analysis happens; (2) the inverse activity's guidance must key off the computed count ("0
+conditions hold"), not example keywords — keyword examples collide with the same phrases
+appearing in the do-NOT-hold list. With both, the 9-case probe matrix is 9/9 correct on
+Qwen2.5-3B with every verdict `source: llm`. On the adopted Ministral-3-3B, the guidance is
+phrased as a norm ("should normally"), with explicit room for judgment on marginal cases; the
+distinction between core and cosmetic conditions lives in the condition descriptions
+themselves (e.g. matkot's "outside this the beach session is unpleasant, not marginal"),
+because the description is the text the model weighs. A third finding: the `reasoning` is
+user-facing, and the end user never sees the prompt — so the system prompt forbids citing
+rules, lists, or computed summaries and requires plain weather terms with real numbers.
+Beyond readability, this made verdicts *more* faithful: with no "3 of 4 conditions hold"
+crutch to cite as fake system endorsement, the model judges marginal cases on the weather
+itself (probed and human-reviewed: all 9 cases sound, verdicts and prose). Deliberate scope
+for the LLM remains: code guarantees the facts and the hard gate; the model owns the
+judgment call.
 
 Rules live in a mounted **YAML file** (`config/activities.yaml`), deserialized at startup into
 strict Rust types with `serde` — config-driven **and** compiler-validated: a malformed file
 fails startup loudly. The scheduler's city list lives in the same file.
+
+Activities are **time-aware at the location**: an optional `require_daylight` hard gate uses
+Open-Meteo's `is_day` (computed from sun position at the evaluated coordinates), so
+"only when the sun is up" is timezone- and season-correct with no clock logic of our own.
 
 ## 5. Decision ledger (choices, alternatives, and why)
 
@@ -227,9 +266,25 @@ committed as code.
   candidate: best JSON-instruction adherence per size)**, Qwen3-1.7B (≈ 1.2 GB),
   gemma-3-1b-it (≈ 0.8 GB), Qwen2.5-3B-Instruct (≈ 2.1 GB, quality ceiling, borderline
   latency).
-- Final selection is **deferred to live testing** during implementation; the model is an env
-  var (`LLM_MODEL_URL`), the GGUF is downloaded on first start and cached in a named volume.
+- The model is an env var (`LLM_MODEL_URL`); the GGUF is downloaded on first start and cached
+  in a named volume.
 - The LLM is asked for strict JSON; parsing is defensive, with the D6 fallback on failure.
+- **Resolved during implementation (three rounds):** Qwen2.5-1.5B-Instruct passed live
+  JSON/latency testing, but its *reasoning coherence* proved inadequate — on inverse-preference
+  activities (Gaming) it produced reasoning that contradicted its own verdict. Upgraded to
+  **Qwen2.5-3B-Instruct Q4_K_M** (2.1 GB): coherent, and 9/9 on the debug probe matrix, but
+  only after four rounds of prompt scaffolding (see §4). Final round evaluated
+  **Ministral-3-3B-Instruct-2512 Q4_K_M** (2.15 GB) on the same matrix: all inverse-preference
+  cases pass without scaffolding tuned for it, reasoning prose is markedly better (cites the
+  deciding condition with real numbers, no self-contradiction), and its one deviation from the
+  then-strict guidance — recommending nature sightseeing at 6 km visibility because the other
+  three conditions hold, explicitly citing the trade-off — was judged *realistic, acceptable
+  reasoning* rather than a failure. **Adopted as the default model**: the guidance states the
+  preference policy; a model that exercises sound, cited judgment is doing the job we hired an
+  LLM for. (The guidance was subsequently softened to norms to match — see §4 — after which
+  the same model declines that visibility case on its own plain-weather reasoning; both
+  verdicts were reviewed and accepted, the judgment being the point, not the boolean.) The cached model file is keyed by name (`LLM_MODEL_FILE`), so
+  swapping `LLM_MODEL_URL` can never silently reuse a stale download.
 
 ### D8. Frontend: React + TypeScript + Vite, served by axum
 `vite build` emits static files; a multi-stage Dockerfile (node stage → rust stage → minimal
@@ -319,8 +374,8 @@ what-da-weather/
 
 | Item | Status | Resolution path |
 |---|---|---|
-| Final LLM model | deferred (D7) | live latency/quality testing during implementation; env-configurable |
-| Integration & failure-injection tests | stretch goal (D9) | compose-based suite; kill-container no-loss test |
+| Final LLM model | **resolved** (D7) | Ministral-3-3B-Instruct-2512 Q4_K_M, chosen by live probe testing; still env-configurable |
+| Integration & failure-injection tests | **partially resolved** (D9) | `scripts/no-data-loss-test.sh` kills Logstash mid-stream and asserts zero loss against a running stack; a full CI-run compose suite remains open |
 | Free-text activities (LLM-only mode) | out of scope v1 | trivial to add: skip rule gate, flag `rules: none` |
 | Web Push (tab-closed notifications) | out of scope v1 | documented upgrade path from SSE (D6) |
 | Kubernetes manifests | out of scope (D2) | images are k8s-ready |

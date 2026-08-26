@@ -1,0 +1,11 @@
+# Logstash node settings (DESIGN.md §6 layer 2 + 3).
+http.host: "0.0.0.0"
+
+# Persistent queue: absorbs Elasticsearch outages on disk instead of in memory.
+# When it fills, Logstash stops consuming and backlog accumulates safely in
+# RabbitMQ — clean end-to-end backpressure.
+queue.type: persisted
+queue.max_bytes: 512mb
+
+# Dead letter queue for ES bulk rejections (mapping conflicts, 400/404).
+dead_letter_queue.enable: true

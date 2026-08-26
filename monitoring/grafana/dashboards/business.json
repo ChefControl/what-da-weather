@@ -1,0 +1,266 @@
+{
+  "title": "Weather Recommendations",
+  "uid": "wdw-business",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "30s",
+  "timezone": "browser",
+  "graphTooltip": 1,
+  "tags": ["what-da-weather"],
+  "links": [
+    {
+      "title": "Related",
+      "type": "dashboards",
+      "tags": ["what-da-weather"],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    }
+  ],
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Evaluations indexed (by activity)",
+      "description": "Documents landing in Elasticsearch per activity — the heartbeat of the whole pipeline. Flat lines mean the scheduler or the queue path is stuck.",
+      "type": "timeseries",
+      "datasource": { "type": "elasticsearch", "uid": "es-weather" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "axisSoftMin": 0
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "matkot" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byName", "options": "nature" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "gaming" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "purple" } }] }
+        ]
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "",
+          "metrics": [{ "id": "1", "type": "count" }],
+          "bucketAggs": [
+            {
+              "id": "2",
+              "type": "terms",
+              "field": "activity.keyword",
+              "settings": { "size": "10", "order": "desc", "orderBy": "_count" }
+            },
+            {
+              "id": "3",
+              "type": "date_histogram",
+              "field": "@timestamp",
+              "settings": { "interval": "auto" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Recommended verdicts (by city)",
+      "description": "Only the verdicts that said \"go for it\", split per city. Weather is shared across activities, so cities usually move together.",
+      "type": "timeseries",
+      "datasource": { "type": "elasticsearch", "uid": "es-weather" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "axisSoftMin": 0
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Tel Aviv" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }] },
+          { "matcher": { "id": "byName", "options": "Haifa" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "teal" } }] },
+          { "matcher": { "id": "byName", "options": "Eilat" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "recommended:true",
+          "metrics": [{ "id": "1", "type": "count" }],
+          "bucketAggs": [
+            {
+              "id": "2",
+              "type": "terms",
+              "field": "city.keyword",
+              "settings": { "size": "10", "order": "desc", "orderBy": "_count" }
+            },
+            {
+              "id": "3",
+              "type": "date_histogram",
+              "field": "@timestamp",
+              "settings": { "interval": "auto" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Verdicts by source (last hour)",
+      "description": "How each verdict was decided: llm = the model judged it, rules-gate = a hard constraint blocked it before the LLM (e.g. nighttime for outdoor activities), fallback = the LLM was unavailable so no recommendation was made.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 8 },
+      "fieldConfig": {
+        "defaults": { "decimals": 0, "unit": "short" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "llm" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "rules-gate" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }] },
+          { "matcher": { "id": "byName", "options": "fallback" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] }
+        ]
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (source) (increase(evaluations_total[1h]))",
+          "legendFormat": "{{source}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Notifications pushed",
+      "description": "Became-recommended edges broadcast to browsers over SSE since the API last started. Only a not-recommended → recommended flip counts.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "unit": "short",
+          "color": { "mode": "fixed", "fixedColor": "purple" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "notifications_sent_total",
+          "legendFormat": "became-recommended pushes"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "DLQ documents (should stay 0)",
+      "description": "Events Elasticsearch rejected, parked in weather-recs-dlq by Logstash's dead letter queue. Anything above zero is a poison message worth investigating.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(elasticsearch_indices_docs_primary{index=\"weather-recs-dlq\"}) or vector(0)",
+          "legendFormat": "poison messages"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Recommendation share per activity (1h window)",
+      "description": "Fraction of each activity's verdicts that were \"recommended\" over the trailing hour. Gaming mirrors the outdoor activities: nice weather sends it down while the others climb.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
+      "fieldConfig": {
+        "defaults": {
+          "max": 1,
+          "min": 0,
+          "unit": "percentunit",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "gradientMode": "opacity",
+            "showPoints": "never"
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "matkot" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byName", "options": "nature" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "gaming" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "purple" } }] }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": ["lastNotNull", "mean"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (activity) (increase(evaluations_total{verdict=\"recommended\"}[1h])) / sum by (activity) (increase(evaluations_total[1h]))",
+          "legendFormat": "{{activity}}"
+        }
+      ]
+    }
+  ]
+}

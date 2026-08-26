@@ -1,0 +1,130 @@
+# Activity rules and scheduler configuration.
+#
+# Deserialized at startup into strict Rust types (serde, deny_unknown_fields):
+# a malformed file fails startup loudly instead of silently misbehaving.
+#
+# Each activity has:
+#   require_daylight — optional hard gate: only possible while the sun is up
+#                      at the evaluated location (Open-Meteo is_day).
+#   required   — hard gate, deliberately LOOSE: blocks only conditions that
+#                make the activity impossible or unsafe. Any violation =>
+#                "not recommended", the LLM is not consulted.
+#   conditions — soft checks evaluated BY CODE and injected into the LLM
+#                prompt as pre-computed holds / does-not-hold facts, so the
+#                model never does arithmetic. The LLM decides the verdict
+#                from those facts; its answer is final.
+#   prompt     — guidance telling the LLM how to decide from those checks.
+#
+# Constraint params: temperature_c, wind_kmh, precipitation_mm, visibility_km,
+# is_day (1 = sun up, 0 = night). Each needs `min`, `max`, or both (inclusive).
+
+scheduler:
+  # Overridable per deployment via the SCHEDULER_INTERVAL_MINUTES env var.
+  interval_minutes: 1
+  cities:
+    - "Tel Aviv"
+    - "Haifa"
+    - "Eilat"
+
+activities:
+  matkot:
+    name: "Matkot at the beach"
+    require_daylight: true
+    required:
+      - param: temperature_c
+        min: 15
+        max: 38
+        description: "Not brutally cold or dangerously hot (15-38 C)"
+      - param: wind_kmh
+        max: 20
+        description: "Wind below 20 km/h - beyond that the ball won't fly at all"
+      - param: visibility_km
+        min: 1
+        description: "Visibility must not be extremely low"
+      - param: precipitation_mm
+        max: 2
+        description: "No real rain"
+    conditions:
+      - param: temperature_c
+        min: 22
+        max: 31
+        description: "Warm enough for swimwear (22-31 C) - outside this the beach session is unpleasant, not marginal"
+      - param: wind_kmh
+        max: 12
+        description: "Calm enough for the very light ball (wind at most 12 km/h)"
+      - param: precipitation_mm
+        max: 0
+        description: "Completely dry"
+    prompt: >-
+      Matkot is a beach paddle-ball game played outdoors on the sand.
+      It should normally be recommended (recommended=true) only when the
+      "do NOT hold" list is (none). A condition that does not hold should
+      normally mean recommended=false - cite it in the reasoning. Use your
+      judgment on marginal cases, naming the trade-off you are accepting.
+
+  nature:
+    name: "Nature sightseeing"
+    require_daylight: true
+    required:
+      - param: temperature_c
+        min: 8
+        max: 38
+        description: "Not freezing or dangerously hot (8-38 C)"
+      - param: wind_kmh
+        max: 50
+        description: "No storm-force wind"
+      - param: visibility_km
+        min: 3
+        description: "Sightseeing needs sight"
+    conditions:
+      - param: temperature_c
+        min: 15
+        max: 30
+        description: "Comfortable walking temperature (15-30 C)"
+      - param: wind_kmh
+        max: 25
+        description: "No strong wind"
+      - param: precipitation_mm
+        max: 0.5
+        description: "Essentially dry"
+      - param: visibility_km
+        min: 10
+        description: "Long views (at least 10 km visibility)"
+    prompt: >-
+      Nature sightseeing means walking outdoor trails and viewpoints.
+      It should normally be recommended (recommended=true) only when the
+      "do NOT hold" list is (none). A condition that does not hold should
+      normally mean recommended=false - cite it in the reasoning. Use your
+      judgment on marginal cases, naming the trade-off you are accepting.
+
+  gaming:
+    name: "Gaming (indoors)"
+    # Indoors: no hard gate. Conditions describe weather that argues for
+    # staying in - the inverse preference lives in the prompt.
+    required: []
+    conditions:
+      - param: is_day
+        max: 0
+        description: "It is nighttime - outdoor time is over for the day"
+      - param: temperature_c
+        min: 32
+        description: "Very hot outside"
+      - param: temperature_c
+        max: 10
+        description: "Cold outside"
+      - param: wind_kmh
+        min: 30
+        description: "Strong wind outside"
+      - param: precipitation_mm
+        min: 0.1
+        description: "Raining outside"
+    prompt: >-
+      Gaming is an INDOOR activity: weather or darkness never block it. Here
+      "recommended" means "the weather says stay in and game". Decide from
+      the computed summary number: if 0 conditions hold, it should normally
+      be recommended=false - the weather is too pleasant to waste indoors, go
+      outside instead. If 1 or more conditions hold, it should normally be
+      recommended=true - give that reason in plain weather words (the heat,
+      the cold, the wind, the rain, or the late hour) as why staying in to
+      game is the right call. Use your judgment on marginal cases, naming
+      the trade-off.

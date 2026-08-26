@@ -1,0 +1,31 @@
+# Prometheus scrapes every component of the stack (DESIGN.md §7).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: weather-api
+    static_configs:
+      - targets: ["weather-api:8080"]
+
+  - job_name: scheduler
+    static_configs:
+      - targets: ["scheduler:8080"]
+
+  - job_name: rabbitmq
+    # Built-in rabbitmq_prometheus plugin.
+    static_configs:
+      - targets: ["rabbitmq:15692"]
+
+  - job_name: elasticsearch
+    static_configs:
+      - targets: ["es-exporter:9114"]
+
+  - job_name: llm
+    # llama-server --metrics
+    static_configs:
+      - targets: ["llm:8080"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

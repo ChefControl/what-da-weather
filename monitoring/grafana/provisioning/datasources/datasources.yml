@@ -1,0 +1,30 @@
+# Grafana datasources as code (DESIGN.md D5): Prometheus for infra + LLM
+# metrics, Elasticsearch for the business data.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  - name: Elasticsearch (weather-recs)
+    uid: es-weather
+    type: elasticsearch
+    access: proxy
+    url: http://elasticsearch:9200
+    jsonData:
+      # weather-recs-2* matches daily indices but not weather-recs-dlq.
+      index: "weather-recs-2*"
+      timeField: "@timestamp"
+
+  - name: Elasticsearch (DLQ)
+    uid: es-dlq
+    type: elasticsearch
+    access: proxy
+    url: http://elasticsearch:9200
+    jsonData:
+      index: "weather-recs-dlq"
+      timeField: "@timestamp"

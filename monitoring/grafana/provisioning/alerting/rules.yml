@@ -1,0 +1,188 @@
+# Ops-only alert rules (DESIGN.md D6/§7): these notify operators about the
+# pipeline's health. User-facing "activity became relevant" pushes are a
+# product feature inside weather-api, deliberately NOT routed through here.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: what-da-weather-ops
+    folder: Ops alerts
+    interval: 1m
+    rules:
+      - uid: wdw-service-down
+        title: Service down
+        condition: C
+        for: 2m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "A scrape target is down ({{ $labels.job }})."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: up == 0
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+              datasource: { type: __expr__, uid: __expr__ }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              datasource: { type: __expr__, uid: __expr__ }
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+
+      - uid: wdw-queue-backlog
+        title: Queue backlog growing without drain
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "weather-events has a persistent backlog; Logstash is not draining."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(rabbitmq_queue_messages_ready)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+              datasource: { type: __expr__, uid: __expr__ }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              datasource: { type: __expr__, uid: __expr__ }
+              conditions:
+                # Calibrated to system scale: the scheduler publishes ~9
+                # events per 10-minute tick, so a dead Logstash crosses 10
+                # within ~15 minutes (100 would take ~18 hours to fire).
+                - evaluator: { type: gt, params: [10] }
+
+      - uid: wdw-llm-errors
+        title: LLM error rate elevated
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "The local LLM is failing; verdicts are degrading to the no-recommendation fallback."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(rate(llm_errors_total[10m]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+              datasource: { type: __expr__, uid: __expr__ }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              datasource: { type: __expr__, uid: __expr__ }
+              conditions:
+                # Calibrated to system scale: a total LLM outage produces at
+                # most ~18 errors per 600s = 0.03/s (0.01/s at night when the
+                # daylight gates skip the LLM), so 0.05 could never fire;
+                # 0.005 (~3 errors/10min) fires on an outage while a lone
+                # transient retry (~0.002/s) stays under.
+                - evaluator: { type: gt, params: [0.005] }
+
+      - uid: wdw-dlq-nonempty
+        title: Dead letter queue non-empty
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "Poison messages were rejected by Elasticsearch and parked in weather-recs-dlq."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(elasticsearch_indices_docs_primary{index="weather-recs-dlq"}) or vector(0)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+              datasource: { type: __expr__, uid: __expr__ }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              datasource: { type: __expr__, uid: __expr__ }
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+
+      - uid: wdw-no-data-flowing
+        title: No data flowing (staleness)
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "No evaluations in 30 minutes despite the scheduler's 10-minute cadence."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(evaluations_total[30m])) or vector(0)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+              datasource: { type: __expr__, uid: __expr__ }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              datasource: { type: __expr__, uid: __expr__ }
+              conditions:
+                - evaluator: { type: lt, params: [1] }

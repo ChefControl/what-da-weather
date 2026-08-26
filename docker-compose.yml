@@ -1,0 +1,203 @@
+# One `docker compose up -d --build` runs the whole system (DESIGN.md D2).
+# Every service: healthcheck + restart policy + health-ordered startup
+# (automatic failure recovery, DESIGN.md §6). Data lives in named volumes.
+
+services:
+  weather-api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: what-da-weather:local
+    environment:
+      AMQP_URL: amqp://${RABBITMQ_USER:-weather}:${RABBITMQ_PASS:-weather}@rabbitmq:5672/%2f
+      LLM_URL: http://llm:8080
+      ES_URL: http://elasticsearch:9200
+      ACTIVITIES_FILE: /config/activities.yaml
+      RUST_LOG: info
+    volumes:
+      - ./config:/config:ro
+    ports:
+      # All published ports bind to loopback: this is a single-host demo
+      # stack with fixed default credentials, so nothing listens on 0.0.0.0.
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      # llm intentionally NOT a startup dependency: while the model downloads
+      # on first boot, verdicts degrade to the no-recommendation fallback (D6).
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  scheduler:
+    image: what-da-weather:local
+    command: ["scheduler"]
+    environment:
+      API_URL: http://weather-api:8080
+      ACTIVITIES_FILE: /config/activities.yaml
+      # Empty means "use scheduler.interval_minutes from activities.yaml".
+      SCHEDULER_INTERVAL_MINUTES: ${SCHEDULER_INTERVAL_MINUTES:-}
+      RUST_LOG: info
+    volumes:
+      - ./config:/config:ro
+    depends_on:
+      weather-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4.1-management
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-weather}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-weather}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+      # Enables the built-in prometheus plugin alongside the management UI.
+      - ./monitoring/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+    ports:
+      - "127.0.0.1:${RABBITMQ_MGMT_PORT:-15672}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      # yellow, not green, on purpose: this is a single-node cluster, and
+      # indices are created with the default 1 replica, which can never be
+      # allocated on the same node as its primary — so green is unreachable
+      # and waiting for it would keep the whole dependency chain unhealthy.
+      # yellow == all primaries active, which is "fully usable" here.
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.17.0
+    environment:
+      LS_JAVA_OPTS: "-Xms256m -Xmx512m"
+      RABBITMQ_USER: ${RABBITMQ_USER:-weather}
+      RABBITMQ_PASS: ${RABBITMQ_PASS:-weather}
+    volumes:
+      - ./logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+      # Persistent queue + dead letter queue survive restarts (no-data-loss layer 2/3).
+      - logstash-data:/usr/share/logstash/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9600 >/dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    restart: unless-stopped
+
+  es-exporter:
+    image: quay.io/prometheuscommunity/elasticsearch-exporter:v1.8.0
+    command:
+      - "--es.uri=http://elasticsearch:9200"
+      - "--es.indices" # per-index doc counts feed the DLQ panel and alert
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+  llm:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    command: >
+      --model-url ${LLM_MODEL_URL:-https://huggingface.co/mistralai/Ministral-3-3B-Instruct-2512-GGUF/resolve/main/Ministral-3-3B-Instruct-2512-Q4_K_M.gguf}
+      --model /models/${LLM_MODEL_FILE:-Ministral-3-3B-Instruct-2512-Q4_K_M.gguf}
+      --host 0.0.0.0 --port 8080
+      --ctx-size 2048
+      --metrics
+    volumes:
+      # Model weights are downloaded on first start and cached here.
+      - llm-models:/models
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      # Generous: first boot downloads ~1.1 GB of weights.
+      start_period: 15m
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASS:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  rabbitmq-data:
+  es-data:
+  logstash-data:
+  llm-models:
+  prometheus-data:
+  grafana-data:
