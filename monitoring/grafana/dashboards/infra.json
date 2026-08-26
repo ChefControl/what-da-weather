@@ -2,7 +2,7 @@
   "title": "Infrastructure & LLM",
   "uid": "wdw-infra",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "refresh": "30s",
   "timezone": "browser",
   "graphTooltip": 1,
@@ -215,6 +215,10 @@
               {
                 "id": "custom.axisPlacement",
                 "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "messages on queue"
               },
               {
                 "id": "decimals",
