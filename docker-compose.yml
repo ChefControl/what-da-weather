@@ -4,10 +4,7 @@
 
 services:
   weather-api:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    image: what-da-weather:local
+    image: ${APP_IMAGE:-ghcr.io/chefcontrol/what-da-weather:latest}
     environment:
       AMQP_URL: amqp://${RABBITMQ_USER:-weather}:${RABBITMQ_PASS:-weather}@rabbitmq:5672/%2f
       LLM_URL: http://llm:8080
@@ -34,7 +31,7 @@ services:
     restart: unless-stopped
 
   scheduler:
-    image: what-da-weather:local
+    image: ${APP_IMAGE:-ghcr.io/chefcontrol/what-da-weather:latest}
     command: ["scheduler"]
     environment:
       API_URL: http://weather-api:8080

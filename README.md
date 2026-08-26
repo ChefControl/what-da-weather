@@ -18,7 +18,7 @@ system.
 Requirements: Docker with ~6 GB of memory available to it. No API keys needed.
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
 First boot downloads images and ~1.1 GB of LLM weights (cached in a volume
@@ -141,6 +141,10 @@ cd backend && cargo fmt && cargo clippy --workspace --all-targets && cargo test
 # Frontend (Node 22+): dev server proxies /api to localhost:8080
 cd frontend && npm install && npm run dev
 npm test && npm run build
+
+# Run the full stack from the local tree instead of the released GHCR image
+docker build -t what-da-weather:local -f backend/Dockerfile .
+APP_IMAGE=what-da-weather:local docker compose up -d
 ```
 
 CI runs the same checks on every push/PR; merges to `main` additionally push
