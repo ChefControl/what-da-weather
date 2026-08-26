@@ -54,7 +54,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # full history: the semver bump is computed from tags + commits
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       # Automatic semantic versioning: each main push creates the next vX.Y.Z
       # git tag (patch by default; feat:/BREAKING CHANGE commits bump
       # minor/major) and the image is tagged with it alongside latest + sha.
