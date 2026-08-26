@@ -1,0 +1,154 @@
+{
+  "title": "Infrastructure & LLM",
+  "uid": "wdw-infra",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "timezone": "browser",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Service health (1 = up)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "refId": "A", "expr": "up", "legendFormat": "{{job}}" }]
+    },
+    {
+      "id": 2,
+      "title": "RabbitMQ weather-events queue",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rabbitmq_queue_messages_ready)",
+          "legendFormat": "ready (waiting for Logstash)"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rabbitmq_queue_messages_unacked)",
+          "legendFormat": "unacked (in flight)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Evaluation throughput",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(evaluations_total[10m])) * 60",
+          "legendFormat": "evaluations/min"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(scheduler_evaluations_total{status=\"error\"}[10m])) * 60",
+          "legendFormat": "scheduler failures/min"
+        },
+        {
+          "refId": "C",
+          "expr": "sum(rate(publish_dropped_total[10m])) * 60",
+          "legendFormat": "events dropped at publish/min"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "LLM latency",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "unit": "s" }, "overrides": [] },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(llm_latency_seconds_bucket[10m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(llm_latency_seconds_bucket[10m])))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "LLM requests, errors & fallbacks",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (rate(llm_requests_total[10m])) * 60",
+          "legendFormat": "requests {{status}}/min"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (kind) (rate(llm_errors_total[10m])) * 60",
+          "legendFormat": "errors {{kind}}/min"
+        },
+        {
+          "refId": "C",
+          "expr": "rate(llm_fallbacks_total[10m]) * 60",
+          "legendFormat": "fallback verdicts/min"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Elasticsearch documents (weather-recs daily indices)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(elasticsearch_indices_docs_primary{index=~\"weather-recs-2.*\"})",
+          "legendFormat": "stored evaluations"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Connected dashboard clients (SSE)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "fieldConfig": { "defaults": { "decimals": 0, "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": {},
+      "targets": [{ "refId": "A", "expr": "sse_clients", "legendFormat": "browser tabs" }]
+    }
+  ]
+}

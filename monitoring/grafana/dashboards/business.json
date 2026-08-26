@@ -1,0 +1,151 @@
+{
+  "title": "Weather Recommendations",
+  "uid": "wdw-business",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "timezone": "browser",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Evaluations indexed (by activity)",
+      "type": "timeseries",
+      "datasource": { "type": "elasticsearch", "uid": "es-weather" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "query": "",
+          "metrics": [{ "id": "1", "type": "count" }],
+          "bucketAggs": [
+            {
+              "id": "2",
+              "type": "terms",
+              "field": "activity.keyword",
+              "settings": { "size": "10", "order": "desc", "orderBy": "_count" }
+            },
+            {
+              "id": "3",
+              "type": "date_histogram",
+              "field": "@timestamp",
+              "settings": { "interval": "auto" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Recommended verdicts (by city)",
+      "type": "timeseries",
+      "datasource": { "type": "elasticsearch", "uid": "es-weather" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "query": "recommended:true",
+          "metrics": [{ "id": "1", "type": "count" }],
+          "bucketAggs": [
+            {
+              "id": "2",
+              "type": "terms",
+              "field": "city.keyword",
+              "settings": { "size": "10", "order": "desc", "orderBy": "_count" }
+            },
+            {
+              "id": "3",
+              "type": "date_histogram",
+              "field": "@timestamp",
+              "settings": { "interval": "auto" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Verdicts by source (last hour)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (source) (increase(evaluations_total[1h]))",
+          "legendFormat": "{{source}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Notifications pushed",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 8 },
+      "fieldConfig": { "defaults": { "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "notifications_sent_total",
+          "legendFormat": "became-recommended pushes"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "DLQ documents (should stay 0)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(elasticsearch_indices_docs_primary{index=\"weather-recs-dlq\"}) or vector(0)",
+          "legendFormat": "poison messages"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Recommendation share per activity (1h window)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
+      "fieldConfig": {
+        "defaults": { "custom": { "fillOpacity": 10 }, "max": 1, "min": 0, "unit": "percentunit" },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (activity) (increase(evaluations_total{verdict=\"recommended\"}[1h])) / sum by (activity) (increase(evaluations_total[1h]))",
+          "legendFormat": "{{activity}}"
+        }
+      ]
+    }
+  ]
+}

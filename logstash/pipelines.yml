@@ -1,0 +1,9 @@
+# Two pipelines: the main RabbitMQ -> Elasticsearch flow, and a reprocessor
+# that surfaces dead-lettered events in a dedicated index (DESIGN.md §6.3).
+- pipeline.id: main
+  path.config: "/usr/share/logstash/pipeline/main.conf"
+
+- pipeline.id: dlq
+  path.config: "/usr/share/logstash/pipeline/dlq.conf"
+  # The DLQ reprocessor must never dead-letter its own output.
+  dead_letter_queue.enable: false
