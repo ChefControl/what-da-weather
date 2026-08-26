@@ -1,0 +1,15 @@
+# Dev override: build the app image from the local tree instead of pulling GHCR.
+#
+#   docker compose -f docker-compose.yml -f docker-compose-dev.yaml up -d --build
+#
+# The build stanza lives on weather-api only; it tags what-da-weather:local,
+# which the scheduler then reuses - one build, two containers.
+services:
+  weather-api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: what-da-weather:local
+
+  scheduler:
+    image: what-da-weather:local

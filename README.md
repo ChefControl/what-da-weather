@@ -18,7 +18,7 @@ system.
 Requirements: Docker with ~6 GB of memory available to it. No API keys needed.
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
 First boot downloads images and ~1.1 GB of LLM weights (cached in a volume
@@ -124,6 +124,7 @@ through the monitoring stack (DESIGN.md D6).
 ```
 ├── DESIGN.md                # the "why" behind every choice
 ├── docker-compose.yml       # the whole system
+├── docker-compose-dev.yaml  # override: build the app image from the local tree
 ├── config/activities.yaml   # activity rules + scheduler cities (validated at startup)
 ├── backend/                 # Rust workspace: core lib + weather-api + scheduler
 ├── frontend/                # React + TypeScript (Vite), served by weather-api
