@@ -227,9 +227,14 @@ committed as code.
   candidate: best JSON-instruction adherence per size)**, Qwen3-1.7B (≈ 1.2 GB),
   gemma-3-1b-it (≈ 0.8 GB), Qwen2.5-3B-Instruct (≈ 2.1 GB, quality ceiling, borderline
   latency).
-- Final selection is **deferred to live testing** during implementation; the model is an env
-  var (`LLM_MODEL_URL`), the GGUF is downloaded on first start and cached in a named volume.
+- The model is an env var (`LLM_MODEL_URL`); the GGUF is downloaded on first start and cached
+  in a named volume.
 - The LLM is asked for strict JSON; parsing is defensive, with the D6 fallback on failure.
+- **Resolved during implementation:** live testing confirmed **Qwen2.5-1.5B-Instruct Q4_K_M**
+  as the default — valid JSON verdicts on every attempt, ~3.3 s cold / ~1.4 s warm per verdict
+  on CPU, comfortably inside the memory budget. Known quirk of the size class: reasoning on
+  inverse preferences (Gaming) can be agreeable-but-mushy; acceptable since hard constraints
+  are enforced by the rule gate, not the LLM.
 
 ### D8. Frontend: React + TypeScript + Vite, served by axum
 `vite build` emits static files; a multi-stage Dockerfile (node stage → rust stage → minimal
@@ -319,8 +324,8 @@ what-da-weather/
 
 | Item | Status | Resolution path |
 |---|---|---|
-| Final LLM model | deferred (D7) | live latency/quality testing during implementation; env-configurable |
-| Integration & failure-injection tests | stretch goal (D9) | compose-based suite; kill-container no-loss test |
+| Final LLM model | **resolved** (D7) | Qwen2.5-1.5B-Instruct Q4_K_M, chosen by live testing; still env-configurable |
+| Integration & failure-injection tests | **partially resolved** (D9) | `scripts/no-data-loss-test.sh` kills Logstash mid-stream and asserts zero loss against a running stack; a full CI-run compose suite remains open |
 | Free-text activities (LLM-only mode) | out of scope v1 | trivial to add: skip rule gate, flag `rules: none` |
 | Web Push (tab-closed notifications) | out of scope v1 | documented upgrade path from SSE (D6) |
 | Kubernetes manifests | out of scope (D2) | images are k8s-ready |
