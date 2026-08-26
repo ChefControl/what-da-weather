@@ -84,6 +84,11 @@ services:
     volumes:
       - es-data:/usr/share/elasticsearch/data
     healthcheck:
+      # yellow, not green, on purpose: this is a single-node cluster, and
+      # indices are created with the default 1 replica, which can never be
+      # allocated on the same node as its primary — so green is unreachable
+      # and waiting for it would keep the whole dependency chain unhealthy.
+      # yellow == all primaries active, which is "fully usable" here.
       test:
         [
           "CMD-SHELL",
